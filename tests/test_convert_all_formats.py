@@ -118,5 +118,38 @@ for _fmt in OUTPUT_FORMATS:
     setattr(TestConvertAllFormats, f"test_epub_to_{_fmt}", _make_test(_fmt))
 
 
+class TestReadmeFormats(unittest.TestCase):
+    """README advertises the formats on PyPI, so it must match the plugin registry."""
+
+    @staticmethod
+    def _registry():
+        from ebook_converter.customize.builtins import plugins
+        from ebook_converter.customize.conversion import InputFormatPlugin, OutputFormatPlugin
+
+        inputs, outputs = set(), set()
+        for plugin in plugins:
+            if isinstance(plugin, type) and issubclass(plugin, InputFormatPlugin):
+                inputs |= set(plugin.file_types)
+            if isinstance(plugin, type) and issubclass(plugin, OutputFormatPlugin):
+                outputs.add(plugin.file_type)
+        return inputs, outputs
+
+    @staticmethod
+    def _listed(heading):
+        import re
+
+        readme = os.path.join(os.path.dirname(os.path.dirname(__file__)), "README.md")
+        with open(readme, encoding="utf-8") as handle:
+            section = handle.read().split("## Supported formats", 1)[1]
+        line = section.split(f"{heading}:", 1)[1].split(".")[0]
+        return set(re.findall(r"`([a-z0-9]+)`", line))
+
+    def test_readme_input_formats_match_registry(self):
+        self.assertEqual(self._listed("Input"), self._registry()[0])
+
+    def test_readme_output_formats_match_registry(self):
+        self.assertEqual(self._listed("Output"), self._registry()[1])
+
+
 if __name__ == "__main__":
     unittest.main()
