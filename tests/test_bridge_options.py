@@ -1,23 +1,21 @@
 """
-Regression tests: converter.convert() extra_args arrive as strings and
-must be coerced to match numeric option defaults, not crash on comparison.
+Regression tests: bridge extra_args arrive as strings and must be coerced to
+match numeric option defaults, not crash on comparison.
 
-Run:  python -m pytest tests/ -v
-  or: python -m unittest tests.test_converter_extra_args -v
+Run:  python -m pytest tests/test_bridge_options.py -v
+  or: python -m unittest tests.test_bridge_options -v
 """
 
 import os
-import shutil
 import sys
-import tempfile
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from tests.test_convert_all_formats import _make_minimal_epub
+from tests.support import MinimalEpubTestCase
 
 
-class TestConverterExtraArgs(unittest.TestCase):
+class TestBridgeOptions(MinimalEpubTestCase):
     """converter.convert() with string-valued numeric extra args."""
 
     def test_remove_text_lines_become_search_patterns(self):
@@ -126,16 +124,6 @@ class TestConverterExtraArgs(unittest.TestCase):
 
         self.assertEqual(options["base_font_size"], "12")
         self.assertIs(options["smarten_punctuation"], True)
-
-    @classmethod
-    def setUpClass(cls):
-        cls._tmpdir = tempfile.mkdtemp(prefix="econverter_test_")
-        cls._epub = os.path.join(cls._tmpdir, "test.epub")
-        _make_minimal_epub(cls._epub)
-
-    @classmethod
-    def tearDownClass(cls):
-        shutil.rmtree(cls._tmpdir, ignore_errors=True)
 
     def _assert_converted(self, result, out_path):
         self.assertTrue(result["success"], result.get("message"))

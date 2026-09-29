@@ -1,14 +1,22 @@
-"""Regression tests for PDF input conversion."""
+"""
+Regression tests for PDF input conversion.
+
+PDF is the one input format the round-trip suite cannot reach, since we never
+emit PDF.
+
+Run:  python -m pytest tests/test_input_pdf.py -v
+  or: python -m unittest tests.test_input_pdf -v
+"""
 
 import os
-import shutil
-import tempfile
 import unittest
 import zipfile
 from unittest.mock import patch
 
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
+
+from tests.support import TempDirTestCase, html_of
 
 
 def _make_minimal_pdf(path):
@@ -20,35 +28,29 @@ def _make_minimal_pdf(path):
     document.save()
 
 
-class TestPDFInput(unittest.TestCase):
+class TestPDFInput(TempDirTestCase):
     """Text-based PDFs can be converted to EPUB."""
+
+    prefix = "econverter_test_pdf_"
 
     @classmethod
     def setUpClass(cls):
-        cls._tmpdir = tempfile.mkdtemp(prefix="econverter_test_pdf_")
+        super().setUpClass()
         cls._pdf = os.path.join(cls._tmpdir, "test.pdf")
         _make_minimal_pdf(cls._pdf)
-
-    @classmethod
-    def tearDownClass(cls):
-        shutil.rmtree(cls._tmpdir, ignore_errors=True)
 
     def test_pdf_to_epub_succeeds(self):
         import converter
 
-        output_path = os.path.join(self._tmpdir, "output.epub")
+        output_path = self.tmp_path("output.epub")
         result = converter.convert(self._pdf, output_path)
 
         self.assertTrue(result["success"], result["message"])
-        self.assertTrue(os.path.isfile(output_path))
-        self.assertGreater(os.path.getsize(output_path), 0)
+        self.assert_artifact(output_path)
         with zipfile.ZipFile(output_path) as archive:
             self.assertIn("mimetype", archive.namelist())
             self.assertIn("META-INF/container.xml", archive.namelist())
-            content = "".join(
-                archive.read(name).decode("utf-8") for name in archive.namelist() if name.endswith(".html")
-            )
-        self.assertIn("Café", content)
+        self.assertIn("Café", html_of(output_path))
 
     def test_html_preserves_czech_text_without_page_headings(self):
         from ebook_converter.ebooks.pdf.pdftohtml import pypdf_to_html
