@@ -43,10 +43,10 @@ ebook-converter book.docx book.epub
 
 ## Supported formats
 
-Input: `azw`, `azw3`, `azw4`, `cbc`, `cbr`, `cbz`, `chm`, `djv`, `djvu`, `docm`,
-`docx`, `epub`, `fb2`, `fbz`, `htm`, `html`, `htmlz`, `lrf`, `markdown`, `md`,
-`mobi`, `odt`, `opf`, `pdb`, `pdf`, `pobi`, `prc`, `rtf`, `shtm`, `shtml`,
-`text`, `textile`, `txt`, `txtz`, `updb`, `xhtm`, `xhtml`.
+Input: `azw`, `azw3`, `docm`, `docx`, `epub`, `fb2`, `fbz`, `htm`, `html`,
+`htmlz`, `lrf`, `markdown`, `md`, `mobi`, `odt`, `opf`, `pdb`, `pdf`, `pobi`,
+`prc`, `rtf`, `shtm`, `shtml`, `text`, `textile`, `txt`, `txtz`, `updb`,
+`xhtm`, `xhtml`.
 
 Output: `azw3`, `docx`, `epub`, `fb2`, `html`, `htmlz`, `lrf`, `mobi`, `oeb`,
 `txt`, `txtz`.

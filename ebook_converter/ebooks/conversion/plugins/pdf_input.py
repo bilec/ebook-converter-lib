@@ -19,20 +19,7 @@ class PDFInput(InputFormatPlugin):
             help='Scale used to determine the length at which a line should '
             'be unwrapped. Valid values are a decimal between 0 and 1. The '
             'default is 0.45, just below the median line length.'),
-        OptionRecommendation(name='new_pdf_engine', recommended_value=False,
-            help='Use the new PDF conversion engine. Currently not operational.')
     }
-
-    def convert_new(self, stream, accelerators):
-        from ebook_converter.ebooks.pdf.pdftohtml import pdftohtml
-        from ebook_converter.utils.cleantext import clean_ascii_chars
-        from ebook_converter.ebooks.pdf.reflow import PDFDocument
-
-        pdftohtml(os.getcwd(), stream.name, self.opts.no_images, as_xml=True)
-        with open('index.xml', 'rb') as f:
-            xml = clean_ascii_chars(f.read())
-        PDFDocument(xml, self.opts, self.log)
-        return os.path.join(os.getcwd(), 'metadata.opf')
 
     def convert(self, stream, options, file_ext, log, accelerators):
         from ebook_converter.ebooks.metadata.opf2 import OPFCreator
@@ -41,8 +28,6 @@ class PDFInput(InputFormatPlugin):
         log.debug('Converting file to html...')
         # The main html file will be named index.html
         self.opts, self.log = options, log
-        if options.new_pdf_engine:
-            return self.convert_new(stream, accelerators)
         pdftohtml(os.getcwd(), stream.name, options.no_images)
 
         from ebook_converter.ebooks.metadata.meta import get_metadata

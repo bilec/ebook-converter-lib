@@ -203,16 +203,6 @@ OptionRecommendation(name='embed_font_family',
             'with some output formats, principally EPUB, AZW3 and DOCX.'
         ),
 
-OptionRecommendation(name='embed_all_fonts',
-        recommended_value=False, level=OptionRecommendation.LOW,
-        help='Embed every font that is referenced in the input document '
-            'but not already embedded. This will search your system for the '
-            'fonts, and if found, they will be embedded. Embedding will only work '
-            'if the format you are converting to supports embedded fonts, such as '
-            'EPUB, AZW3, DOCX or PDF. Please ensure that you have the proper license for embedding '
-            'the fonts used in this document.'
-        ),
-
 OptionRecommendation(name='subset_embedded_fonts',
         recommended_value=False, level=OptionRecommendation.LOW,
         help='Subset all embedded fonts. Every embedded font is reduced '
@@ -338,12 +328,6 @@ OptionRecommendation(name='extra_css',
                 'This CSS will be appended to the style rules from '
                 'the source file, so it can be used to override those '
                 'rules.'
-        ),
-
-OptionRecommendation(name='transform_css_rules',
-            recommended_value=None, level=OptionRecommendation.LOW,
-            help='Rules for transforming the styles in this book. These'
-                   ' rules are applied after all other CSS processing is done.'
         ),
 
 OptionRecommendation(name='filter_css',
@@ -828,7 +812,7 @@ OptionRecommendation(name='search_replace',
             if name in {'sr1_search', 'sr1_replace', 'sr2_search', 'sr2_replace', 'sr3_search', 'sr3_replace', 'filter_css', 'comments'}:
                 if not a and not b:
                     return True
-            if name in {'transform_css_rules', 'search_replace'}:
+            if name == 'search_replace':
                 if b == '[]':
                     b = None
             return a == b
@@ -995,9 +979,6 @@ OptionRecommendation(name='search_replace',
         if self.for_regex_wizard and hasattr(self.opts, 'no_process'):
             self.opts.no_process = True
         self.flush()
-        if self.opts.embed_all_fonts or self.opts.embed_font_family:
-            # Start the threaded font scanner now, for performance
-            from ebook_converter.utils.fonts.scanner import font_scanner  # noqa
         import css_parser, logging
         css_parser.log.setLevel(logging.WARN)
 
@@ -1030,16 +1011,6 @@ OptionRecommendation(name='search_replace',
 
         if hasattr(self.opts, 'lrf') and self.output_plugin.file_type == 'lrf':
             self.opts.lrf = True
-        if self.input_fmt == 'azw4' and self.output_plugin.file_type == 'pdf':
-            self.ui_reporter(0.01, 'AZW4 files are simply wrappers around PDF files.'
-                             ' Skipping the conversion and unwrapping the embedded PDF instead')
-            from ebook_converter.ebooks.azw4.reader import unwrap
-            unwrap(stream, self.output)
-            self.ui_reporter(1.)
-            self.log.info('%s output written to %s', self.output_fmt.upper(),
-                          self.output)
-            self.flush()
-            return
 
         self.ui_reporter(0.01, 'Converting input to HTML...')
         ir = CompositeProgressReporter(0.01, 0.34, self.ui_reporter)
@@ -1153,18 +1124,12 @@ OptionRecommendation(name='search_replace',
         mobi_file_type = getattr(self.opts, 'mobi_file_type', 'old')
         needs_old_markup = (self.output_plugin.file_type == 'lit' or (
             self.output_plugin.file_type == 'mobi' and mobi_file_type == 'old'))
-        transform_css_rules = ()
-        if self.opts.transform_css_rules:
-            transform_css_rules = self.opts.transform_css_rules
-            if isinstance(transform_css_rules, (str, bytes)):
-                transform_css_rules = json.loads(transform_css_rules)
         flattener = CSSFlattener(fbase=fbase, fkey=fkey,
                 lineh=line_height,
                 untable=needs_old_markup,
                 unfloat=needs_old_markup,
                 page_break_on_body=self.output_plugin.file_type in ('mobi',
                     'lit'),
-                transform_css_rules=transform_css_rules,
                 specializer=functools.partial(self.output_plugin.specialize_css_for_output,
                     self.log, self.opts))
         flattener(self.oeb, self.opts)
@@ -1177,10 +1142,6 @@ OptionRecommendation(name='search_replace',
             RemoveFakeMargins, RemoveAdobeMargins
         RemoveFakeMargins()(self.oeb, self.log, self.opts)
         RemoveAdobeMargins()(self.oeb, self.log, self.opts)
-
-        if self.opts.embed_all_fonts:
-            from ebook_converter.ebooks.oeb.transforms.embed_fonts import EmbedFonts
-            EmbedFonts()(self.oeb, self.log, self.opts)
 
         if self.opts.subset_embedded_fonts and self.output_plugin.file_type != 'pdf':
             from ebook_converter.ebooks.oeb.transforms.subset import SubsetFonts

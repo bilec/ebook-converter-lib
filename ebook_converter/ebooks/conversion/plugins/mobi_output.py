@@ -19,13 +19,6 @@ def remove_html_cover(oeb, log):
             oeb.manifest.remove(item)
 
 
-def extract_mobi(output_path, opts):
-    if opts.extract_to is not None:
-        from ebook_converter.ebooks.mobi.debug.main import inspect_mobi
-        ddir = opts.extract_to
-        inspect_mobi(output_path, ddir=ddir)
-
-
 class MOBIOutput(OutputFormatPlugin):
 
     name = 'MOBI Output'
@@ -67,11 +60,6 @@ class MOBIOutput(OutputFormatPlugin):
             recommended_value=False,
             help='When adding the Table of Contents to the book, add it at the start of the '
                 'book instead of the end. Not recommended.'
-        ),
-        OptionRecommendation(name='extract_to',
-            help='Extract the contents of the generated %s file to the '
-                'specified directory. The contents of the directory are first '
-                'deleted, so be careful.' % 'MOBI'
         ),
         OptionRecommendation(name='share_not_sync', recommended_value=False,
             help='Enable sharing of book content via Facebook etc. '
@@ -197,7 +185,6 @@ class MOBIOutput(OutputFormatPlugin):
                 ) if create_kf8 else None
         if mobi_type == 'new':
             kf8.write(output_path)
-            extract_mobi(output_path, opts)
             return
 
         self.log.info('Creating MOBI 6 output')
@@ -213,7 +200,6 @@ class MOBIOutput(OutputFormatPlugin):
         from ebook_converter.ebooks.oeb.transforms.manglecase import CaseMangler
         from ebook_converter.ebooks.oeb.transforms.rasterize import SVGRasterizer, Unavailable
         from ebook_converter.ebooks.oeb.transforms.htmltoc import HTMLTOCAdder
-        from ebook_converter.customize.ui import plugin_for_input_format
 
         opts, oeb = self.opts, self.oeb
         if not opts.no_inline_toc:
@@ -235,12 +221,10 @@ class MOBIOutput(OutputFormatPlugin):
             self.workaround_fire_bugs(self.oeb.inserted_metadata_jacket)
         mobimlizer = MobiMLizer(ignore_tables=opts.linearize_tables)
         mobimlizer(oeb, opts)
-        write_page_breaks_after_item = input_plugin is not plugin_for_input_format('cbz')
         from ebook_converter.ebooks.mobi.writer2.main import MobiWriter
         writer = MobiWriter(opts, resources, kf8,
-                        write_page_breaks_after_item=write_page_breaks_after_item)
+                        write_page_breaks_after_item=True)
         writer(oeb, output_path)
-        extract_mobi(output_path, opts)
 
     def specialize_css_for_output(self, log, opts, item, stylizer):
         from ebook_converter.ebooks.mobi.writer8.cleanup import CSSCleanup
@@ -287,10 +271,6 @@ class AZW3Output(OutputFormatPlugin):
             help='When adding the Table of Contents to the book, add it at the start of the '
                 'book instead of the end. Not recommended.'
         ),
-        OptionRecommendation(name='extract_to',
-            help='Extract the contents of the generated %s file to the '
-                'specified directory. The contents of the directory are first '
-                'deleted, so be careful.' % 'AZW3'),
         OptionRecommendation(name='share_not_sync', recommended_value=False,
             help='Enable sharing of book content via Facebook etc. '
                 ' on the Kindle. WARNING: Using this feature means that '
@@ -321,7 +301,6 @@ class AZW3Output(OutputFormatPlugin):
         kf8 = create_kf8_book(self.oeb, self.opts, resources, for_joint=False)
 
         kf8.write(output_path)
-        extract_mobi(output_path, opts)
 
     def specialize_css_for_output(self, log, opts, item, stylizer):
         from ebook_converter.ebooks.mobi.writer8.cleanup import CSSCleanup

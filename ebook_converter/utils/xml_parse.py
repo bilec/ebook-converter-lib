@@ -65,8 +65,3 @@ def find_tests():
                 self.assertEqual(got, expected)
 
     return unittest.defaultTestLoader.loadTestsFromTestCase(TestXMLParse)
-
-
-if __name__ == '__main__':
-    from ebook_converter.utils.run_tests import run_tests
-    run_tests(find_tests)

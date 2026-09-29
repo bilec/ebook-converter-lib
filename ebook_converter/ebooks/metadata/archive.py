@@ -63,25 +63,15 @@ class KPFExtract(FileTypePlugin):
 class ArchiveExtract(FileTypePlugin):
     name = 'Archive Extract'
     author = 'Kovid Goyal'
-    description = ('Extract common e-book formats from archive files (ZIP/'
-                   'RAR). Also try to autodetect if they are actually CBZ/CBR '
-                   'files.')
-    file_types = {'zip', 'rar'}
+    description = 'Extract common e-book formats from ZIP archives'
+    file_types = {'zip'}
     supported_platforms = ['osx', 'linux']
     on_import = True
 
     def run(self, archive):
         from ebook_converter.utils.zipfile import ZipFile
-        is_rar = archive.lower().endswith('.rar')
-        if is_rar:
-            from ebook_converter.utils.unrar import extract_member, names
-        else:
-            zf = ZipFile(archive, 'r')
-
-        if is_rar:
-            fnames = list(names(archive))
-        else:
-            fnames = zf.namelist()
+        zf = ZipFile(archive, 'r')
+        fnames = zf.namelist()
 
         def fname_ok(fname):
             bn = os.path.basename(fname).lower()
@@ -96,13 +86,6 @@ class ArchiveExtract(FileTypePlugin):
             return True
 
         fnames = list(filter(fname_ok, fnames))
-        if is_comic(fnames):
-            ext = '.cbr' if is_rar else '.cbz'
-            of = self.temporary_file('_archive_extract'+ext)
-            with open(archive, 'rb') as f:
-                of.write(f.read())
-            of.close()
-            return of.name
         if len(fnames) > 1 or not fnames:
             return archive
         fname = fnames[0]
@@ -114,11 +97,7 @@ class ArchiveExtract(FileTypePlugin):
 
         of = self.temporary_file('_archive_extract.'+ext)
         with closing(of):
-            if is_rar:
-                data = extract_member(archive, match=None, name=fname)[1]
-                of.write(data)
-            else:
-                of.write(zf.read(fname))
+            of.write(zf.read(fname))
         return of.name
 
 
@@ -185,16 +164,3 @@ def parse_comic_comment(comment, series_index='volume'):
                 get_comic_book_info(m[cat], mi, series_index=series_index)
                 break
     return mi
-
-
-def get_comic_metadata(stream, stream_type, series_index='volume'):
-    comment = None
-    if stream_type == 'cbz':
-        from ebook_converter.utils.zipfile import ZipFile
-        zf = ZipFile(stream)
-        comment = zf.comment
-    elif stream_type == 'cbr':
-        from ebook_converter.utils.unrar import comment as get_comment
-        comment = get_comment(stream)
-
-    return parse_comic_comment(comment or b'{}', series_index=series_index)

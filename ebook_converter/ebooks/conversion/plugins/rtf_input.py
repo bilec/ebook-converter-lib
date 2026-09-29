@@ -49,10 +49,7 @@ class RTFInput(InputFormatPlugin):
     file_types = {'rtf'}
     commit_name = 'rtf_input'
 
-    options = {OptionRecommendation(name='ignore_wmf', recommended_value=False,
-                                    help='Ignore WMF images instead of '
-                                    'replacing them with a placeholder '
-                                    'image.')}
+    options = set()
 
     def generate_xml(self, stream):
         from ebook_converter.ebooks.rtf2xml.ParseRtf import ParseRtf
@@ -149,7 +146,6 @@ class RTFInput(InputFormatPlugin):
         return self.convert_images(imap)
 
     def convert_images(self, imap):
-        self.default_img = None
         for count, val in imap.items():
             try:
                 imap[count] = self.convert_image(val)
@@ -160,37 +156,10 @@ class RTFInput(InputFormatPlugin):
     def convert_image(self, name):
         if not name.endswith('.wmf'):
             return name
-        try:
-            return self.rasterize_wmf(name)
-        except Exception:
-            self.log.exception('Failed to convert WMF image %r', name)
-        return self.replace_wmf(name)
-
-    def replace_wmf(self, name):
-        if self.opts.ignore_wmf:
-            os.remove(name)
-            return '__REMOVE_ME__'
-        from ebook_converter.ebooks.covers import message_image
-        if self.default_img is None:
-            self.default_img = message_image('Conversion of WMF images is not '
-                                             'supported. Use Microsoft Word '
-                                             'or OpenOffice to save this RTF '
-                                             'file as HTML and convert that '
-                                             'in calibre.')
-        name = name.replace('.wmf', '.jpg')
-        with open(name, 'wb') as f:
-            f.write(self.default_img)
-        return name
-
-    def rasterize_wmf(self, name):
-        from ebook_converter.utils.wmf.parse import wmf_unwrap
-        with open(name, 'rb') as f:
-            data = f.read()
-        data = wmf_unwrap(data)
-        name = name.replace('.wmf', '.png')
-        with open(name, 'wb') as f:
-            f.write(data)
-        return name
+        # No WMF rasterizer is available, so the image cannot be displayed.
+        self.log.warning('Discarding WMF image %r', name)
+        os.remove(name)
+        return '__REMOVE_ME__'
 
     def write_inline_css(self, ic, border_styles):
         font_size_classes = ['span.fs%d { font-size: %spt }' % (i, x)

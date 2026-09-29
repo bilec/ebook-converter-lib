@@ -12,39 +12,19 @@ FORMAT_READERS = None
 
 def _import_readers():
     global FORMAT_READERS
-    from ebook_converter.ebooks.pdb.ereader.reader import Reader as ereader_reader
     from ebook_converter.ebooks.pdb.palmdoc.reader import Reader as palmdoc_reader
     from ebook_converter.ebooks.pdb.ztxt.reader import Reader as ztxt_reader
     from ebook_converter.ebooks.pdb.pdf.reader import Reader as pdf_reader
-    from ebook_converter.ebooks.pdb.plucker.reader import Reader as plucker_reader
     from ebook_converter.ebooks.pdb.haodoo.reader import Reader as haodoo_reader
 
+    # eReader and Plucker are listed in IDENTITY_TO_NAME but have no reader, so
+    # they raise PDBError naming the format instead of failing on an import.
     FORMAT_READERS = {
-        'PNPdPPrs': ereader_reader,
-        'PNRdPPrs': ereader_reader,
         'zTXTGPlm': ztxt_reader,
         'TEXtREAd': palmdoc_reader,
         '.pdfADBE': pdf_reader,
-        'DataPlkr': plucker_reader,
         'BOOKMTIT': haodoo_reader,
         'BOOKMTIU': haodoo_reader,
-    }
-
-
-ALL_FORMAT_WRITERS = {'doc', 'ztxt', 'ereader'}
-FORMAT_WRITERS = None
-
-
-def _import_writers():
-    global FORMAT_WRITERS
-    from ebook_converter.ebooks.pdb.palmdoc.writer import Writer as palmdoc_writer
-    from ebook_converter.ebooks.pdb.ztxt.writer import Writer as ztxt_writer
-    from ebook_converter.ebooks.pdb.ereader.writer import Writer as ereader_writer
-
-    FORMAT_WRITERS = {
-        'doc': palmdoc_writer,
-        'ztxt': ztxt_writer,
-        'ereader': ereader_writer,
     }
 
 
@@ -91,13 +71,3 @@ def get_reader(identity):
     if FORMAT_READERS is None:
         _import_readers()
     return FORMAT_READERS.get(identity, None)
-
-
-def get_writer(extension):
-    '''
-    Returns None if no writer is found for extension.
-    '''
-    global FORMAT_WRITERS
-    if FORMAT_WRITERS is None:
-        _import_writers()
-    return FORMAT_WRITERS.get(extension, None)

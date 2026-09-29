@@ -447,19 +447,6 @@ def get_font_for_text(text, candidate_font_data=None):
     return candidate_font_data
 
 
-def test_glyph_ids():
-    from ebook_converter.utils.fonts.free_type import FreeType
-    # TODO(gryf): move this test to test files
-    data = P('fonts/liberation/LiberationSerif-Regular.ttf', data=True)
-    ft = FreeType()
-    font = ft.load_font(data)
-    text = u'诶йab'
-    ft_glyphs = tuple(font.glyph_ids(text))
-    glyphs = tuple(get_glyph_ids(data, text))
-    if ft_glyphs != glyphs:
-        raise Exception('My code and FreeType differ on the glyph ids')
-
-
 def test_supports_text():
     # TODO(gryf): move this test to test files
     data = P('fonts/calibreSymbols.otf', data=True)

@@ -165,14 +165,6 @@ def calibre_cover(title, author_string, series_string=None,
                   logo_path=None):
     # TODO(gryf): generate cover using pillow
     return None
-    title = normalize(title)
-    author_string = normalize(author_string)
-    series_string = normalize(series_string)
-    from ebook_converter.ebooks.covers import calibre_cover2
-    from ebook_converter.utils.img import image_to_data
-    ans = calibre_cover2(title, author_string or '', series_string or '',
-                         logo_path=logo_path, as_qimage=True)
-    return image_to_data(ans, fmt=output_format)
 
 
 UNIT_RE = re.compile(r'^(-*[0-9]*[.]?[0-9]*)\s*(%|em|ex|en|px|mm|cm|in|pt|pc'
@@ -233,12 +225,8 @@ def parse_css_length(value):
 
 
 def generate_masthead(title, output_path=None, width=600, height=60):
-    from ebook_converter.ebooks.conversion.config import load_defaults
-    recs = load_defaults('mobi_output')
-    masthead_font_family = recs.get('masthead_font', None)
-    from ebook_converter.ebooks.covers import generate_masthead
-    return generate_masthead(title, output_path=output_path, width=width,
-                             height=height, font_family=masthead_font_family)
+    # TODO(gryf): generate masthead using pillow
+    return None
 
 
 def escape_xpath_attr(value):
