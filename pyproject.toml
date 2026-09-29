@@ -3,26 +3,28 @@ requires = ["setuptools >= 77.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ebook-converter"
-version = "4.12.0"
-requires-python = ">= 3.10"
+name = "ebook-converter-lib"
+version = "1.0.0"
+requires-python = ">= 3.11"
 description = "Convert ebook between different formats"
 dependencies = [
     "beautifulsoup4>=4.9.3",
     "css-parser>=1.0.6",
     "filelock>=3.0.12",
     "html2text>=2020.1.16",
-    "html5-parser==0.4.12",
-    "msgpack>=1.0.0",
+    "lxml>=4.9.0",
+    "markdown>=3.0",
     "odfpy>=1.4.1",
     "pillow>=8.0.1",
+    "pypdf>=5.0.0",
     "python-dateutil>=2.8.1",
-    "setuptools>=61.0",
+    "reportlab>=4.0",
+    "svglib>=0.9.3",
     "tinycss>=0.4"
 ]
-readme = "README.rst"
+readme = "README.md"
 authors = [
-    {name = "gryf", email = "gryf73@gmail.com"}
+    {name = "bilec", email = "martin.bilka826@gmail.com"}
 ]
 license = "GPL-3.0-or-later"
 classifiers = [
@@ -33,20 +35,42 @@ classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13"
 ]
 
 [project.urls]
-Repository = "https://github.com/gryf/ebook-converter"
+Repository = "https://github.com/bilec/ebook-converter-lib"
 
 [project.scripts]
 ebook-converter = "ebook_converter.main:main"
 
+# html5_parser and msgpack ship top-level on purpose: they are pure-Python shims that must
+# shadow the real PyPI packages, which need C extensions Chaquopy cannot build. Do not namespace.
 [tool.setuptools.packages.find]
-exclude = ["snap"]
+exclude = ["tests", "tests.*"]
+
+# "converter" stays top-level: econverter calls Python.getModule("converter") via Chaquopy.
+[tool.setuptools]
+py-modules = ["converter"]
 
 [tool.setuptools.package-data]
-"*" = ["*.types", "*.css", "*.html", "*.xhtml", "*.xsl", "*.json"]
+"*" = ["*.types", "*.css", "*.html", "*.xhtml", "*.xsl", "*.json", "*.tmpl", "*.txt", "*.ttf", "*.otf"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.4.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+exclude = ["ebook_converter", "html5_parser", "msgpack"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
