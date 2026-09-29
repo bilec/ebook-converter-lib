@@ -134,13 +134,8 @@ class EmbedFontsCSSRules(object):
 class CSSFlattener(object):
 
     def __init__(self, fbase=None, fkey=None, lineh=None, unfloat=False,
-                 untable=False, page_break_on_body=False, specializer=None,
-                 transform_css_rules=()):
+                 untable=False, page_break_on_body=False, specializer=None):
         self.fbase = fbase
-        self.transform_css_rules = transform_css_rules
-        if self.transform_css_rules:
-            from ebook_converter.ebooks.css_transform_rules import compile_rules
-            self.transform_css_rules = compile_rules(self.transform_css_rules)
         self.fkey = fkey
         self.lineh = lineh
         self.unfloat = unfloat
@@ -608,9 +603,6 @@ class CSSFlattener(object):
                 manifest.remove(item)
         id, href = manifest.generate('css', 'stylesheet.css')
         sheet = css_parser.parseString(css, validate=False)
-        if self.transform_css_rules:
-            from ebook_converter.ebooks.css_transform_rules import transform_sheet
-            transform_sheet(self.transform_css_rules, sheet)
         item = manifest.add(id, href, base.CSS_MIME, data=sheet)
         self.oeb.manifest.main_stylesheet = item
         return href
@@ -640,9 +632,6 @@ class CSSFlattener(object):
             if css.strip():
                 id_, href = manifest.generate('page_css', 'page_styles.css')
                 sheet = css_parser.parseString(css, validate=False)
-                if self.transform_css_rules:
-                    from ebook_converter.ebooks.css_transform_rules import transform_sheet
-                    transform_sheet(self.transform_css_rules, sheet)
                 manifest.add(id_, href, base.CSS_MIME, data=sheet)
             gc_map[css] = href
 

@@ -7,11 +7,8 @@ from ebook_converter.constants_old import numeric_version
 from ebook_converter.customize import FileTypePlugin
 from ebook_converter.customize import InterfaceActionBase
 from ebook_converter.customize import MetadataReaderPlugin
-from ebook_converter.customize import MetadataWriterPlugin
-from ebook_converter.ebooks.html.to_zip import HTML2ZIP
 from ebook_converter.ebooks.metadata.archive import ArchiveExtract
 from ebook_converter.ebooks.metadata.archive import KPFExtract
-from ebook_converter.ebooks.metadata.archive import get_comic_metadata
 
 
 plugins = []
@@ -128,75 +125,10 @@ class TXT2TXTZ(FileTypePlugin):
             return path_to_ebook
 
 
-plugins += [HTML2ZIP, TXT2TXTZ, ArchiveExtract, KPFExtract]
+plugins += [TXT2TXTZ, ArchiveExtract, KPFExtract]
 # }}}
 
 # Metadata reader plugins {{{
-
-
-class ComicMetadataReader(MetadataReaderPlugin):
-
-    name = 'Read comic metadata'
-    file_types = {'cbr', 'cbz'}
-    description = 'Extract cover from comic files'
-
-    def customization_help(self, gui=False):
-        return 'Read series number from volume or issue number. Default is volume, set this to issue to use issue number instead.'
-
-    def get_metadata(self, stream, ftype):
-        if hasattr(stream, 'seek') and hasattr(stream, 'tell'):
-            pos = stream.tell()
-            id_ = stream.read(3)
-            stream.seek(pos)
-            if id_ == b'Rar':
-                ftype = 'cbr'
-            elif id_.startswith(b'PK'):
-                ftype = 'cbz'
-        if ftype == 'cbr':
-            from ebook_converter.utils.unrar import extract_cover_image
-        else:
-            from ebook_converter.libunzip import extract_cover_image
-        from ebook_converter.ebooks.metadata import MetaInformation
-        ret = extract_cover_image(stream)
-        mi = MetaInformation(None, None)
-        stream.seek(0)
-        if ftype in {'cbr', 'cbz'}:
-            series_index = self.site_customization
-            if series_index not in {'volume', 'issue'}:
-                series_index = 'volume'
-            try:
-                mi.smart_update(get_comic_metadata(stream, ftype, series_index=series_index))
-            except:
-                pass
-        if ret is not None:
-            path, data = ret
-            ext = os.path.splitext(path)[1][1:]
-            mi.cover_data = (ext.lower(), data)
-        return mi
-
-
-class CHMMetadataReader(MetadataReaderPlugin):
-
-    name        = 'Read CHM metadata'
-    file_types  = {'chm'}
-    description = 'Read metadata from CHM files'
-
-    def get_metadata(self, stream, ftype):
-        from ebook_converter.ebooks.chm.metadata import get_metadata
-        return get_metadata(stream)
-
-
-class EPUBMetadataReader(MetadataReaderPlugin):
-
-    name        = 'Read EPUB metadata'
-    file_types  = {'epub'}
-    description = 'Read metadata from EPUB files'
-
-    def get_metadata(self, stream, ftype):
-        from ebook_converter.ebooks.metadata.epub import get_metadata, get_quick_metadata
-        if self.quick:
-            return get_quick_metadata(stream)
-        return get_metadata(stream)
 
 
 class FB2MetadataReader(MetadataReaderPlugin):
@@ -233,29 +165,6 @@ class HTMLZMetadataReader(MetadataReaderPlugin):
         return get_metadata(stream)
 
 
-class IMPMetadataReader(MetadataReaderPlugin):
-
-    name        = 'Read IMP metadata'
-    file_types  = {'imp'}
-    description = 'Read metadata from IMP files'
-    author      = 'Ashish Kulkarni'
-
-    def get_metadata(self, stream, ftype):
-        from ebook_converter.ebooks.metadata.imp import get_metadata
-        return get_metadata(stream)
-
-
-class LITMetadataReader(MetadataReaderPlugin):
-
-    name        = 'Read LIT metadata'
-    file_types  = {'lit'}
-    description = 'Read metadata from LIT files'
-
-    def get_metadata(self, stream, ftype):
-        from ebook_converter.ebooks.metadata.lit import get_metadata
-        return get_metadata(stream)
-
-
 class LRFMetadataReader(MetadataReaderPlugin):
 
     name        = 'Read LRF metadata'
@@ -267,28 +176,6 @@ class LRFMetadataReader(MetadataReaderPlugin):
         return get_metadata(stream)
 
 
-class LRXMetadataReader(MetadataReaderPlugin):
-
-    name        = 'Read LRX metadata'
-    file_types  = {'lrx'}
-    description = 'Read metadata from LRX files'
-
-    def get_metadata(self, stream, ftype):
-        from ebook_converter.ebooks.metadata.lrx import get_metadata
-        return get_metadata(stream)
-
-
-class MOBIMetadataReader(MetadataReaderPlugin):
-
-    name        = 'Read MOBI metadata'
-    file_types  = {'mobi', 'prc', 'azw', 'azw3', 'azw4', 'pobi'}
-    description = 'Read metadata from MOBI files'
-
-    def get_metadata(self, stream, ftype):
-        from ebook_converter.ebooks.metadata.mobi import get_metadata
-        return get_metadata(stream)
-
-
 class ODTMetadataReader(MetadataReaderPlugin):
 
     name        = 'Read ODT metadata'
@@ -297,40 +184,6 @@ class ODTMetadataReader(MetadataReaderPlugin):
 
     def get_metadata(self, stream, ftype):
         from ebook_converter.ebooks.metadata.odt import get_metadata
-        return get_metadata(stream)
-
-
-class DocXMetadataReader(MetadataReaderPlugin):
-
-    name        = 'Read DOCX metadata'
-    file_types  = {'docx'}
-    description = 'Read metadata from DOCX files'
-
-    def get_metadata(self, stream, ftype):
-        from ebook_converter.ebooks.metadata.docx import get_metadata
-        return get_metadata(stream)
-
-
-class OPFMetadataReader(MetadataReaderPlugin):
-
-    name        = 'Read OPF metadata'
-    file_types  = {'opf'}
-    description = 'Read metadata from OPF files'
-
-    def get_metadata(self, stream, ftype):
-        from ebook_converter.ebooks.metadata.opf import get_metadata
-        return get_metadata(stream)[0]
-
-
-class PDBMetadataReader(MetadataReaderPlugin):
-
-    name        = 'Read PDB metadata'
-    file_types  = {'pdb', 'updb'}
-    description = 'Read metadata from PDB files'
-    author      = 'John Schember'
-
-    def get_metadata(self, stream, ftype):
-        from ebook_converter.ebooks.metadata.pdb import get_metadata
         return get_metadata(stream)
 
 
@@ -347,41 +200,6 @@ class PDFMetadataReader(MetadataReaderPlugin):
         return get_metadata(stream)
 
 
-class PMLMetadataReader(MetadataReaderPlugin):
-
-    name        = 'Read PML metadata'
-    file_types  = {'pml', 'pmlz'}
-    description = 'Read metadata from PML files'
-    author      = 'John Schember'
-
-    def get_metadata(self, stream, ftype):
-        from ebook_converter.ebooks.metadata.pml import get_metadata
-        return get_metadata(stream)
-
-
-class RARMetadataReader(MetadataReaderPlugin):
-
-    name = 'Read RAR metadata'
-    file_types = {'rar'}
-    description = 'Read metadata from e-books in RAR archives'
-
-    def get_metadata(self, stream, ftype):
-        from ebook_converter.ebooks.metadata.rar import get_metadata
-        return get_metadata(stream)
-
-
-class RBMetadataReader(MetadataReaderPlugin):
-
-    name        = 'Read RB metadata'
-    file_types  = {'rb'}
-    description = 'Read metadata from RB files'
-    author      = 'Ashish Kulkarni'
-
-    def get_metadata(self, stream, ftype):
-        from ebook_converter.ebooks.metadata.rb import get_metadata
-        return get_metadata(stream)
-
-
 class RTFMetadataReader(MetadataReaderPlugin):
 
     name        = 'Read RTF metadata'
@@ -390,29 +208,6 @@ class RTFMetadataReader(MetadataReaderPlugin):
 
     def get_metadata(self, stream, ftype):
         from ebook_converter.ebooks.metadata.rtf import get_metadata
-        return get_metadata(stream)
-
-
-class SNBMetadataReader(MetadataReaderPlugin):
-
-    name        = 'Read SNB metadata'
-    file_types  = {'snb'}
-    description = 'Read metadata from SNB files'
-    author      = 'Li Fanxi'
-
-    def get_metadata(self, stream, ftype):
-        from ebook_converter.ebooks.metadata.snb import get_metadata
-        return get_metadata(stream)
-
-
-class TOPAZMetadataReader(MetadataReaderPlugin):
-
-    name        = 'Read Topaz metadata'
-    file_types  = {'tpz', 'azw1'}
-    description = 'Read metadata from MOBI files'
-
-    def get_metadata(self, stream, ftype):
-        from ebook_converter.ebooks.metadata.topaz import get_metadata
         return get_metadata(stream)
 
 
@@ -440,180 +235,12 @@ class TXTZMetadataReader(MetadataReaderPlugin):
         return get_metadata(stream)
 
 
-class ZipMetadataReader(MetadataReaderPlugin):
-
-    name = 'Read ZIP metadata'
-    file_types = {'zip', 'oebzip'}
-    description = 'Read metadata from e-books in ZIP archives'
-
-    def get_metadata(self, stream, ftype):
-        from ebook_converter.ebooks.metadata.zip import get_metadata
-        return get_metadata(stream)
-
-
 plugins += [x for x in list(locals().values()) if isinstance(x, type) and
                                         x.__name__.endswith('MetadataReader')]
 
 # }}}
 
-# Metadata writer plugins {{{
-
-
-class EPUBMetadataWriter(MetadataWriterPlugin):
-
-    name = 'Set EPUB metadata'
-    file_types = {'epub'}
-    description = 'Set metadata in EPUB files'
-
-    def set_metadata(self, stream, mi, type):
-        from ebook_converter.ebooks.metadata.epub import set_metadata
-        q = self.site_customization or ''
-        set_metadata(stream, mi, apply_null=self.apply_null, force_identifiers=self.force_identifiers, add_missing_cover='disable-add-missing-cover' != q)
-
-    def customization_help(self, gui=False):
-        h = 'disable-add-missing-cover'
-        if gui:
-            h = '<i>' + h + '</i>'
-        return ('Enter {0} below to have the EPUB metadata writer plugin not '
-                'add cover images to EPUB files that have no existing cover '
-                'image.'.format(h))
-
-
-class FB2MetadataWriter(MetadataWriterPlugin):
-
-    name = 'Set FB2 metadata'
-    file_types = {'fb2', 'fbz'}
-    description = 'Set metadata in FB2 files'
-
-    def set_metadata(self, stream, mi, type):
-        from ebook_converter.ebooks.metadata.fb2 import set_metadata
-        set_metadata(stream, mi, apply_null=self.apply_null)
-
-
-class HTMLZMetadataWriter(MetadataWriterPlugin):
-
-    name        = 'Set HTMLZ metadata'
-    file_types  = {'htmlz'}
-    description = 'Set metadata from HTMLZ files'
-    author      = 'John Schember'
-
-    def set_metadata(self, stream, mi, type):
-        from ebook_converter.ebooks.metadata.extz import set_metadata
-        set_metadata(stream, mi)
-
-
-class LRFMetadataWriter(MetadataWriterPlugin):
-
-    name = 'Set LRF metadata'
-    file_types = {'lrf'}
-    description = 'Set metadata in LRF files'
-
-    def set_metadata(self, stream, mi, type):
-        from ebook_converter.ebooks.lrf.meta import set_metadata
-        set_metadata(stream, mi)
-
-
-class MOBIMetadataWriter(MetadataWriterPlugin):
-
-    name        = 'Set MOBI metadata'
-    file_types  = {'mobi', 'prc', 'azw', 'azw3', 'azw4'}
-    description = 'Set metadata in MOBI files'
-    author      = 'Marshall T. Vandegrift'
-
-    def set_metadata(self, stream, mi, type):
-        from ebook_converter.ebooks.metadata.mobi import set_metadata
-        set_metadata(stream, mi)
-
-
-class PDBMetadataWriter(MetadataWriterPlugin):
-
-    name        = 'Set PDB metadata'
-    file_types  = {'pdb'}
-    description = 'Set metadata from PDB files'
-    author      = 'John Schember'
-
-    def set_metadata(self, stream, mi, type):
-        from ebook_converter.ebooks.metadata.pdb import set_metadata
-        set_metadata(stream, mi)
-
-
-class PDFMetadataWriter(MetadataWriterPlugin):
-
-    name        = 'Set PDF metadata'
-    file_types  = {'pdf'}
-    description = 'Set metadata in PDF files'
-    author      = 'Kovid Goyal'
-
-    def set_metadata(self, stream, mi, type):
-        from ebook_converter.ebooks.metadata.pdf import set_metadata
-        set_metadata(stream, mi)
-
-
-class RTFMetadataWriter(MetadataWriterPlugin):
-
-    name = 'Set RTF metadata'
-    file_types = {'rtf'}
-    description = 'Set metadata in RTF files'
-
-    def set_metadata(self, stream, mi, type):
-        from ebook_converter.ebooks.metadata.rtf import set_metadata
-        set_metadata(stream, mi)
-
-
-class TOPAZMetadataWriter(MetadataWriterPlugin):
-
-    name        = 'Set TOPAZ metadata'
-    file_types  = {'tpz', 'azw1'}
-    description = 'Set metadata in TOPAZ files'
-    author      = 'Greg Riker'
-
-    def set_metadata(self, stream, mi, type):
-        from ebook_converter.ebooks.metadata.topaz import set_metadata
-        set_metadata(stream, mi)
-
-
-class TXTZMetadataWriter(MetadataWriterPlugin):
-
-    name        = 'Set TXTZ metadata'
-    file_types  = {'txtz'}
-    description = 'Set metadata from TXTZ files'
-    author      = 'John Schember'
-
-    def set_metadata(self, stream, mi, type):
-        from ebook_converter.ebooks.metadata.extz import set_metadata
-        set_metadata(stream, mi)
-
-
-class ODTMetadataWriter(MetadataWriterPlugin):
-
-    name        = 'Set ODT metadata'
-    file_types  = {'odt'}
-    description = 'Set metadata from ODT files'
-
-    def set_metadata(self, stream, mi, type):
-        from ebook_converter.ebooks.metadata.odt import set_metadata
-        return set_metadata(stream, mi)
-
-
-class DocXMetadataWriter(MetadataWriterPlugin):
-
-    name        = 'Set DOCX metadata'
-    file_types  = {'docx'}
-    description = 'Set metadata from DOCX files'
-
-    def set_metadata(self, stream, mi, type):
-        from ebook_converter.ebooks.metadata.docx import set_metadata
-        return set_metadata(stream, mi)
-
-
-plugins += [x for x in list(locals().values()) if isinstance(x, type) and
-                                        x.__name__.endswith('MetadataWriter')]
-
-# }}}
-
 # Conversion plugins {{{
-from ebook_converter.ebooks.conversion.plugins.comic_input import ComicInput
-from ebook_converter.ebooks.conversion.plugins.djvu_input import DJVUInput
 from ebook_converter.ebooks.conversion.plugins.epub_input import EPUBInput
 from ebook_converter.ebooks.conversion.plugins.fb2_input import FB2Input
 from ebook_converter.ebooks.conversion.plugins.html_input import HTMLInput
@@ -621,12 +248,10 @@ from ebook_converter.ebooks.conversion.plugins.htmlz_input import HTMLZInput
 from ebook_converter.ebooks.conversion.plugins.mobi_input import MOBIInput
 from ebook_converter.ebooks.conversion.plugins.odt_input import ODTInput
 from ebook_converter.ebooks.conversion.plugins.pdb_input import PDBInput
-from ebook_converter.ebooks.conversion.plugins.azw4_input import AZW4Input
 from ebook_converter.ebooks.conversion.plugins.pdf_input import PDFInput
 from ebook_converter.ebooks.conversion.plugins.rtf_input import RTFInput
 from ebook_converter.ebooks.conversion.plugins.txt_input import TXTInput
 from ebook_converter.ebooks.conversion.plugins.lrf_input import LRFInput
-from ebook_converter.ebooks.conversion.plugins.chm_input import CHMInput
 from ebook_converter.ebooks.conversion.plugins.docx_input import DOCXInput
 
 from ebook_converter.ebooks.conversion.plugins.epub_output import EPUBOutput
@@ -641,8 +266,6 @@ from ebook_converter.ebooks.conversion.plugins.htmlz_output import HTMLZOutput
 from ebook_converter.ebooks.conversion.plugins.docx_output import DOCXOutput
 
 plugins += [
-    ComicInput,
-    DJVUInput,
     EPUBInput,
     FB2Input,
     HTMLInput,
@@ -650,12 +273,10 @@ plugins += [
     MOBIInput,
     ODTInput,
     PDBInput,
-    AZW4Input,
     PDFInput,
     RTFInput,
     TXTInput,
     LRFInput,
-    CHMInput,
     DOCXInput,
 ]
 plugins += [
@@ -1027,14 +648,6 @@ class ActionStore(InterfaceActionBase):
 
     def customization_help(self, gui=False):
         return 'Customize the behavior of the store search.'
-
-    def config_widget(self):
-        from ebook_converter.gui2.store.config.store import config_widget as get_cw
-        return get_cw()
-
-    def save_settings(self, config_widget):
-        from ebook_converter.gui2.store.config.store import save_settings as save
-        save(config_widget)
 
 
 class ActionPluginUpdater(InterfaceActionBase):

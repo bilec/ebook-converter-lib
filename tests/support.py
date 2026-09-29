@@ -7,7 +7,9 @@ Kept free of pytest-only constructs so the modules here still run under
 
 import os
 import shutil
+import struct
 import tempfile
+import time
 import unittest
 import zipfile
 
@@ -81,6 +83,87 @@ def make_minimal_epub(path):
         zf.writestr("META-INF/container.xml", container_xml)
         zf.writestr("content.opf", content_opf)
         zf.writestr("chapter1.xhtml", chapter_xhtml)
+
+
+def make_minimal_odt(path):
+    """Create the smallest ODT the reader accepts; text:h needs an outline level."""
+    with zipfile.ZipFile(path, "w") as zf:
+        zf.writestr("mimetype", "application/vnd.oasis.opendocument.text", zipfile.ZIP_STORED)
+        zf.writestr(
+            "META-INF/manifest.xml",
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<manifest:manifest xmlns:manifest="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0"'
+            ' manifest:version="1.2">'
+            '<manifest:file-entry manifest:full-path="/"'
+            ' manifest:media-type="application/vnd.oasis.opendocument.text"/>'
+            '<manifest:file-entry manifest:full-path="content.xml" manifest:media-type="text/xml"/>'
+            "</manifest:manifest>",
+        )
+        zf.writestr(
+            "content.xml",
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" '
+            'xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" office:version="1.2">'
+            "<office:body><office:text>"
+            '<text:h text:outline-level="1">Chapter 1</text:h>'
+            "<text:p>Hello, world.</text:p>"
+            "</office:text></office:body></office:document-content>",
+        )
+        zf.writestr(
+            "styles.xml",
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<office:document-styles xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"'
+            ' office:version="1.2"/>',
+        )
+        zf.writestr(
+            "meta.xml",
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<office:document-meta xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" '
+            'xmlns:dc="http://purl.org/dc/elements/1.1/" office:version="1.2">'
+            "<office:meta><dc:title>Test Book</dc:title></office:meta></office:document-meta>",
+        )
+
+
+def make_minimal_rtf(path):
+    with open(path, "wb") as handle:
+        handle.write(
+            rb"{\rtf1\ansi\deff0{\fonttbl{\f0 Times New Roman;}}"
+            rb"\f0\fs24 Chapter 1\par Hello, world.\par}"
+        )
+
+
+def make_minimal_pdb(path):
+    """Create an uncompressed PalmDOC container (identity TEXtREAd)."""
+    text = b"Chapter 1\r\n\r\nHello, world.\r\n"
+    records = [text[index : index + 4096] for index in range(0, len(text), 4096)]
+    sections = [struct.pack(">HHIHHI", 1, 0, len(text), len(records), 4096, 0)] + records
+
+    offset = 78 + len(sections) * 8 + 2
+    record_info = b""
+    for index, section in enumerate(sections):
+        record_info += struct.pack(">IBBH", offset, 0, 0, index)
+        offset += len(section)
+
+    stamp = int(time.time()) + 2082844800  # Palm epoch is 1904-01-01
+    header = struct.pack(
+        ">32shhIIIIII4s4sIIh",
+        b"TestBook".ljust(32, b"\0"),
+        0,
+        0,
+        stamp,
+        stamp,
+        0,
+        0,
+        0,
+        0,
+        b"TEXt",
+        b"REAd",
+        0,
+        0,
+        len(sections),
+    )
+    with open(path, "wb") as handle:
+        handle.write(header + record_info + b"\0\0" + b"".join(sections))
 
 
 class TempDirTestCase(unittest.TestCase):

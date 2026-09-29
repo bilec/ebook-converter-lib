@@ -680,11 +680,3 @@ def merge_xmp_packet(old, new):
             clone_into(desc, item)
 
     return serialize_xmp_packet(root)
-
-
-if __name__ == '__main__':
-    from ebook_converter.utils.podofo import get_xmp_metadata
-    xmp_packet = get_xmp_metadata(sys.argv[-1])
-    mi = metadata_from_xmp_packet(xmp_packet)
-    np = metadata_to_xmp_packet(mi)
-    print(merge_xmp_packet(xmp_packet, np))

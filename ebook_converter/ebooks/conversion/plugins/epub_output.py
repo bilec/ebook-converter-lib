@@ -245,11 +245,6 @@ class EPUBOutput(OutputFormatPlugin):
             from ebook_converter.customize.ui import plugin_for_output_format
             metadata_xml = None
             extra_entries = []
-            if self.is_periodical:
-                if self.opts.output_profile.epub_periodical_format == 'sony':
-                    from ebook_converter.ebooks.epub.periodical import sony_metadata
-                    metadata_xml, atom_xml = sony_metadata(oeb)
-                    extra_entries = [('atom.xml', 'application/atom+xml', atom_xml)]
             oeb_output = plugin_for_output_format('oeb')
             oeb_output.convert(oeb, tdir, input_plugin, opts, log)
             opf = [x for x in os.listdir(tdir) if x.endswith('.opf')][0]

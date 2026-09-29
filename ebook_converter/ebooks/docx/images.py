@@ -129,18 +129,6 @@ class Images(object):
                 raise LinkedImageNotFound(fname)
         base = base or image_filename(fname.rpartition('/')[-1]) or 'image'
         ext = what(None, raw) or base.rpartition('.')[-1] or 'jpeg'
-        if ext == 'emf':
-            # For an example, see: https://bugs.launchpad.net/bugs/1224849
-            self.log.info('Found an EMF image: %s, trying to extract '
-                          'embedded raster image', fname)
-            from ebook_converter.utils.wmf.emf import emf_unwrap
-            try:
-                raw = emf_unwrap(raw)
-            except Exception:
-                self.log.exception('Failed to extract embedded raster image '
-                                   'from EMF')
-            else:
-                ext = 'png'
         base = base.rpartition('.')[0]
         if not base:
             base = 'image'

@@ -25,10 +25,7 @@ class Unihandecoder(object):
     def __init__(self, lang="zh", encoding='utf-8'):
         self.preferred_encoding = encoding
         lang = lang.lower()
-        if lang[:2] == 'ja':
-            from ebook_converter.ebooks.unihandecode.jadecoder import Jadecoder
-            self.decoder = Jadecoder()
-        elif lang[:2] == 'kr' or lang == 'korean':
+        if lang[:2] == 'kr' or lang == 'korean':
             from ebook_converter.ebooks.unihandecode.krdecoder import Krdecoder
             self.decoder = Krdecoder()
         elif lang[:2] == 'vn' or lang == 'vietnum':
