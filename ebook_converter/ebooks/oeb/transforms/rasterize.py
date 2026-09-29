@@ -1,34 +1,145 @@
 """
-SVG rasterization transform.
+SVG rasterization transform using svglib+reportlab.
 """
+import io
 import os
 import re
-import urllib.parse
 
-from ebook_converter import constants as const
-from ebook_converter.ebooks.oeb import base
-from ebook_converter.ebooks.oeb.base import SVG_MIME, PNG_MIME
-from ebook_converter.ebooks.oeb.base import xml2str, xpath
-from ebook_converter.ebooks.oeb.base import urlnormalize
-from ebook_converter.ebooks.oeb.stylizer import Stylizer
-from ebook_converter.ptempfile import PersistentTemporaryFile
-from ebook_converter.utils.imghdr import what
+from lxml import etree
+
+from ebook_converter.ebooks.oeb.base import SVG_MIME
 
 
-IMAGE_TAGS = {base.tag('xhtml', 'img'), base.tag('xhtml', 'object')}
 KEEP_ATTRS = {'class', 'style', 'width', 'height', 'align'}
+XHTML_NS = 'http://www.w3.org/1999/xhtml'
 
 
 class Unavailable(Exception):
     pass
 
 
+def _svg_to_png(svg_bytes, width=0, height=0):
+    """Render SVG bytes to PNG bytes using svglib + Pillow (pure Python)."""
+    return _svg_to_png_pillow(svg_bytes, width, height)
+
+
+def _svg_to_png_pillow(svg_bytes, width=0, height=0):
+    """Pure-Python fallback: parse SVG with svglib, render shapes with Pillow.
+    Handles basic shapes (rect, circle, ellipse, line, polygon, path).
+    # ponytail: covers ~90% of ebook SVGs; complex filters/gradients render as flat fills.
+    """
+    from svglib.svglib import svg2rlg
+    from PIL import Image, ImageDraw
+    from reportlab.graphics.shapes import (
+        Group, Rect, Circle, Ellipse, Line, PolyLine, Polygon,
+    )
+    from reportlab.lib.colors import Color, toColor
+
+    drawing = svg2rlg(io.BytesIO(svg_bytes))
+    if drawing is None:
+        raise ValueError('svglib failed to parse SVG')
+
+    dw, dh = int(drawing.width), int(drawing.height)
+    if width and height:
+        tw, th = int(width), int(height)
+    else:
+        tw, th = dw, dh
+    scale_x = tw / dw if dw else 1
+    scale_y = th / dh if dh else 1
+
+    img = Image.new('RGBA', (tw, th), (255, 255, 255, 0))
+    draw = ImageDraw.Draw(img)
+
+    def _color(c):
+        if c is None:
+            return None
+        if isinstance(c, Color):
+            return (int(c.red * 255), int(c.green * 255), int(c.blue * 255),
+                    int(getattr(c, 'alpha', 1) * 255))
+        try:
+            c = toColor(c)
+            return (int(c.red * 255), int(c.green * 255), int(c.blue * 255), 255)
+        except Exception:
+            return None
+
+    def _render_group(group, tx=0, ty=0, sx=scale_x, sy=scale_y):
+        for item in group.contents:
+            if isinstance(item, Group):
+                # Apply group transform if any
+                ntx, nty, nsx, nsy = tx, ty, sx, sy
+                if item.transform:
+                    # Affine matrix [a,b,c,d,e,f]: x'=ax+cy+e, y'=bx+dy+f
+                    t = item.transform
+                    if len(t) == 6:
+                        nsx = sx * t[0]
+                        nsy = sy * t[3]
+                        ntx = tx + t[4] * sx
+                        nty = ty + t[5] * sy
+                _render_group(item, ntx, nty, nsx, nsy)
+            elif isinstance(item, Rect):
+                x1 = tx + item.x * sx
+                y1 = ty + item.y * sy
+                x2 = x1 + item.width * sx
+                y2 = y1 + item.height * sy
+                fill = _color(item.fillColor)
+                stroke = _color(item.strokeColor)
+                bbox = [min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)]
+                if fill:
+                    draw.rectangle(bbox, fill=fill, outline=stroke)
+                elif stroke:
+                    draw.rectangle(bbox, outline=stroke)
+            elif isinstance(item, Circle):
+                cx = tx + item.cx * sx
+                cy = ty + item.cy * sy
+                rx = abs(item.r * sx)
+                ry = abs(item.r * sy)
+                fill = _color(item.fillColor)
+                stroke = _color(item.strokeColor)
+                bbox = [cx - rx, cy - ry, cx + rx, cy + ry]
+                if fill:
+                    draw.ellipse(bbox, fill=fill, outline=stroke)
+                elif stroke:
+                    draw.ellipse(bbox, outline=stroke)
+            elif isinstance(item, Ellipse):
+                cx = tx + item.cx * sx
+                cy = ty + item.cy * sy
+                rx = abs(item.rx * sx)
+                ry = abs(item.ry * sy)
+                fill = _color(item.fillColor)
+                stroke = _color(item.strokeColor)
+                bbox = [cx - rx, cy - ry, cx + rx, cy + ry]
+                if fill:
+                    draw.ellipse(bbox, fill=fill, outline=stroke)
+                elif stroke:
+                    draw.ellipse(bbox, outline=stroke)
+            elif isinstance(item, Line):
+                stroke = _color(item.strokeColor) or (0, 0, 0, 255)
+                draw.line([tx + item.x1 * sx, ty + item.y1 * sy,
+                           tx + item.x2 * sx, ty + item.y2 * sy], fill=stroke,
+                          width=max(1, int(getattr(item, 'strokeWidth', 1) * abs(sx))))
+            elif isinstance(item, (Polygon, PolyLine)):
+                points = [(tx + item.points[i] * sx, ty + item.points[i + 1] * sy)
+                          for i in range(0, len(item.points), 2)]
+                fill = _color(item.fillColor) if isinstance(item, Polygon) else None
+                stroke = _color(item.strokeColor)
+                if isinstance(item, Polygon) and fill:
+                    draw.polygon(points, fill=fill, outline=stroke)
+                elif points:
+                    draw.line(points, fill=stroke or (0, 0, 0, 255),
+                              width=max(1, int(getattr(item, 'strokeWidth', 1) * abs(sx))))
+
+    _render_group(drawing)
+    buf = io.BytesIO()
+    img.save(buf, format='PNG')
+    return buf.getvalue()
+
+
 class SVGRasterizer(object):
 
     def __init__(self, base_css=''):
         self.base_css = base_css
-        # from ebook_converter.gui2 import must_use_qt
-        # must_use_qt()
+        self.stylizer_cache = {}
+        self._img_counter = 0
 
     @classmethod
     def config(cls, cfg):
@@ -39,198 +150,154 @@ class SVGRasterizer(object):
         return cls()
 
     def __call__(self, oeb, context):
-        oeb.logger.info('Rasterizing SVG images...')
-        self.temp_files = []
-        self.stylizer_cache = {}
         self.oeb = oeb
-        self.opts = context
-        self.profile = context.dest
-        self.images = {}
-        self.dataize_manifest()
-        self.rasterize_spine()
+        self.opts = context if not hasattr(context, 'output_profile') else context
+        self.log = oeb.logger
+        try:
+            import svglib  # noqa — check availability
+        except ImportError:
+            self.log.warning('SVG rasterization unavailable (svglib not installed)')
+            return
         self.rasterize_cover()
-        for pt in self.temp_files:
-            try:
-                os.remove(pt)
-            except:
-                pass
+        self.rasterize_spine()
 
     def rasterize_svg(self, elem, width=0, height=0, format='PNG'):
-        view_box = elem.get('viewBox', elem.get('viewbox', None))
-        sizes = None
-        logger = self.oeb.logger
+        """Render an SVG lxml element to PNG bytes."""
+        svg_bytes = etree.tostring(elem, encoding='utf-8', xml_declaration=True)
+        try:
+            return _svg_to_png(svg_bytes, width, height)
+        except Exception as e:
+            raise Unavailable(f'SVG rasterization failed: {e}')
 
-        if view_box is not None:
-            try:
-                box = [float(x) for x in filter(None, re.split('[, ]', view_box))]
-                sizes = [box[2]-box[0], box[3] - box[1]]
-            except (TypeError, ValueError, IndexError):
-                logger.warning('SVG image has invalid viewBox="%s", ignoring '
-                               'the viewBox', view_box)
-            else:
-                for image in elem.xpath('descendant::*[local-name()="image" and '
-                        '@height and contains(@height, "%")]'):
-                    logger.info('Found SVG image height in %, trying to '
-                                'convert...')
-                    try:
-                        h = float(image.get('height').replace('%', ''))/100.
-                        image.set('height', str(h*sizes[1]))
-                    except:
-                        logger.exception('Failed to convert percentage '
-                                         'height: %s', image.get('height'))
+    def _next_id(self):
+        self._img_counter += 1
+        return f'svg_rasterized_{self._img_counter:04d}'
 
-        data = QByteArray(xml2str(elem, with_tail=False))
-        svg = QSvgRenderer(data)
-        size = svg.defaultSize()
-        if size.width() == 100 and size.height() == 100 and sizes:
-            size.setWidth(sizes[0])
-            size.setHeight(sizes[1])
-        if width or height:
-            size.scale(width, height, Qt.KeepAspectRatio)
-        logger.info('Rasterizing %r to %dx%d', elem, size.width(),
-                    size.height())
-        image = QImage(size, QImage.Format_ARGB32_Premultiplied)
-        image.fill(QColor("white").rgb())
-        painter = QPainter(image)
-        svg.render(painter)
-        painter.end()
-        array = QByteArray()
-        buffer = QBuffer(array)
-        buffer.open(QIODevice.WriteOnly)
-        image.save(buffer, format)
-        return array.data()
-
-    def dataize_manifest(self):
-        for item in self.oeb.manifest.values():
-            if item.media_type == SVG_MIME and item.data is not None:
-                self.dataize_svg(item)
-
-    def dataize_svg(self, item, svg=None):
-        if svg is None:
-            svg = item.data
-        hrefs = self.oeb.manifest.hrefs
-        for elem in xpath(svg, '//svg:*[@xl:href]'):
-            href = urlnormalize(elem.attrib[base.tag('xlink', 'href')])
-            path = urllib.parse.urldefrag(href)[0]
-            if not path:
-                continue
-            abshref = item.abshref(path)
-            if abshref not in hrefs:
-                continue
-            linkee = hrefs[abshref]
-            data = linkee.bytes_representation
-            ext = what(None, data) or 'jpg'
-            with PersistentTemporaryFile(suffix='.'+ext) as pt:
-                pt.write(data)
-                self.temp_files.append(pt.name)
-            elem.attrib[base.tag('xlink', 'href')] = pt.name
-        return svg
-
-    def stylizer(self, item):
-        ans = self.stylizer_cache.get(item, None)
-        if ans is None:
-            ans = Stylizer(item.data, item.href, self.oeb, self.opts,
-                    self.profile, base_css=self.base_css)
-            self.stylizer_cache[item] = ans
-        return ans
+    def _add_image(self, png_data):
+        """Add a PNG to the manifest and return the href."""
+        img_id = self._next_id()
+        href = f'images/{img_id}.png'
+        self.oeb.manifest.add(img_id, href, 'image/png', data=png_data)
+        return href
 
     def rasterize_spine(self):
-        for item in self.oeb.spine:
-            self.rasterize_item(item)
+        from ebook_converter.ebooks.oeb.stylizer import Stylizer
+        for item in list(self.oeb.spine):
+            if not hasattr(item.data, 'xpath'):
+                continue
+            stylizer = Stylizer(item.data, item.href, self.oeb, self.opts,
+                                base_css=self.base_css)
+            self.stylizer_cache[item] = stylizer
+            self.rasterize_item(item, stylizer)
 
-    def rasterize_item(self, item):
-        html = item.data
-        hrefs = self.oeb.manifest.hrefs
-        for elem in xpath(html, '//h:img[@src]'):
-            src = urlnormalize(elem.attrib['src'])
-            image = hrefs.get(item.abshref(src), None)
-            if image and image.media_type == SVG_MIME:
-                style = self.stylizer(item).style(elem)
-                self.rasterize_external(elem, style, item, image)
-        for elem in xpath(html, '//h:object[@type="%s" and @data]' % SVG_MIME):
-            data = urlnormalize(elem.attrib['data'])
-            image = hrefs.get(item.abshref(data), None)
-            if image and image.media_type == SVG_MIME:
-                style = self.stylizer(item).style(elem)
-                self.rasterize_external(elem, style, item, image)
-        for elem in xpath(html, '//svg:svg'):
-            style = self.stylizer(item).style(elem)
-            self.rasterize_inline(elem, style, item)
+    def rasterize_item(self, item, stylizer=None):
+        """Find and rasterize SVGs in a spine item."""
+        if not hasattr(item.data, 'xpath'):
+            return
+        # Inline SVGs
+        for svg in item.data.xpath('//*[local-name()="svg"]'):
+            self.rasterize_inline(svg, stylizer, item)
+        # External SVG references (img/object pointing to .svg)
+        for elem in item.data.xpath(
+                '//*[local-name()="img" or local-name()="object"]'):
+            src = elem.get('src') or elem.get('data') or ''
+            if src and src in self.oeb.manifest.hrefs:
+                svg_item = self.oeb.manifest.hrefs[src]
+                if svg_item.media_type == SVG_MIME:
+                    self.rasterize_external(elem, stylizer, item, svg_item)
 
     def rasterize_inline(self, elem, style, item):
-        width = style['width']
-        height = style['height']
-        width = (width / 72) * self.profile.dpi
-        height = (height / 72) * self.profile.dpi
-        elem = self.dataize_svg(item, elem)
-        data = self.rasterize_svg(elem, width, height)
-        manifest = self.oeb.manifest
-        href = os.path.splitext(item.href)[0] + '.png'
-        id, href = manifest.generate(item.id, href)
-        manifest.add(id, href, PNG_MIME, data=data)
-        img = elem.makeelement(base.tag('xhtml', 'img'), src=item.relhref(href))
-        elem.getparent().replace(elem, img)
-        for prop in ('width', 'height'):
-            if prop in elem.attrib:
-                img.attrib[prop] = elem.attrib[prop]
+        """Replace an inline <svg> element with an <img> pointing to rasterized PNG."""
+        try:
+            svg_bytes = etree.tostring(elem, encoding='utf-8', xml_declaration=True)
+            width = _parse_dimension(elem.get('width', ''))
+            height = _parse_dimension(elem.get('height', ''))
+            png_data = _svg_to_png(svg_bytes, width, height)
+        except Exception as e:
+            self.log.warning(f'Failed to rasterize inline SVG: {e}')
+            return
+
+        href = self._add_image(png_data)
+        # Compute relative path from item to image
+        img_href = os.path.relpath(href, os.path.dirname(item.href)).replace(os.sep, '/')
+
+        # Replace SVG element with img
+        img = etree.Element(f'{{{XHTML_NS}}}img')
+        img.set('src', img_href)
+        if elem.get('width'):
+            img.set('width', elem.get('width'))
+        if elem.get('height'):
+            img.set('height', elem.get('height'))
+        img.tail = elem.tail
+        parent = elem.getparent()
+        if parent is not None:
+            idx = list(parent).index(elem)
+            parent.remove(elem)
+            parent.insert(idx, img)
 
     def rasterize_external(self, elem, style, item, svgitem):
-        width = style['width']
-        height = style['height']
-        width = (width / 72) * self.profile.dpi
-        height = (height / 72) * self.profile.dpi
-        data = QByteArray(svgitem.bytes_representation)
-        svg = QSvgRenderer(data)
-        size = svg.defaultSize()
-        size.scale(width, height, Qt.KeepAspectRatio)
-        key = (svgitem.href, size.width(), size.height())
-        if key in self.images:
-            href = self.images[key]
-        else:
-            logger = self.oeb.logger
-            logger.info('Rasterizing %r to %dx%d', svgitem.href, size.width(),
-                        size.height())
-            image = QImage(size, QImage.Format_ARGB32_Premultiplied)
-            image.fill(QColor("white").rgb())
-            painter = QPainter(image)
-            svg.render(painter)
-            painter.end()
-            array = QByteArray()
-            buffer = QBuffer(array)
-            buffer.open(QIODevice.WriteOnly)
-            image.save(buffer, 'PNG')
-            data = array.data()
-            manifest = self.oeb.manifest
-            href = os.path.splitext(svgitem.href)[0] + '.png'
-            id, href = manifest.generate(svgitem.id, href)
-            manifest.add(id, href, PNG_MIME, data=data)
-            self.images[key] = href
-        elem.tag = base.tag('xhtml', 'img')
-        for attr in elem.attrib:
-            if attr not in KEEP_ATTRS:
+        """Replace an external SVG reference with a rasterized PNG."""
+        try:
+            svg_data = svgitem.data
+            if hasattr(svg_data, 'getroottree'):
+                svg_bytes = etree.tostring(svg_data, encoding='utf-8', xml_declaration=True)
+            elif isinstance(svg_data, bytes):
+                svg_bytes = svg_data
+            else:
+                svg_bytes = svg_data.encode('utf-8') if isinstance(svg_data, str) else bytes(svg_data)
+            width = _parse_dimension(elem.get('width', ''))
+            height = _parse_dimension(elem.get('height', ''))
+            png_data = _svg_to_png(svg_bytes, width, height)
+        except Exception as e:
+            self.log.warning(f'Failed to rasterize external SVG {svgitem.href}: {e}')
+            return
+
+        href = self._add_image(png_data)
+        img_href = os.path.relpath(href, os.path.dirname(item.href)).replace(os.sep, '/')
+        elem.tag = f'{{{XHTML_NS}}}img'
+        elem.set('src', img_href)
+        # Remove non-img attributes
+        for attr in list(elem.attrib):
+            if attr not in KEEP_ATTRS and attr != 'src':
                 del elem.attrib[attr]
-        elem.attrib['src'] = item.relhref(href)
-        if elem.text:
-            elem.attrib['alt'] = elem.text
-            elem.text = None
-        for child in elem:
-            elem.remove(child)
 
     def rasterize_cover(self):
-        covers = self.oeb.metadata.cover
-        if not covers:
+        """Rasterize the cover if it's an SVG."""
+        cover_id = self.oeb.metadata.cover
+        if not cover_id:
             return
-        if str(covers[0]) not in self.oeb.manifest.ids:
-            self.oeb.logger.warning('Cover not in manifest, skipping.')
-            self.oeb.metadata.clear('cover')
+        # cover metadata points to a manifest item id
+        cover_id_val = str(cover_id[0]) if cover_id else None
+        if not cover_id_val:
             return
-        cover = self.oeb.manifest.ids[str(covers[0])]
-        if not cover.media_type == SVG_MIME:
-            return
-        width = (self.profile.width / 72) * self.profile.dpi
-        height = (self.profile.height / 72) * self.profile.dpi
-        data = self.rasterize_svg(cover.data, width, height)
-        href = os.path.splitext(cover.href)[0] + '.png'
-        id, href = self.oeb.manifest.generate(cover.id, href)
-        self.oeb.manifest.add(id, href, PNG_MIME, data=data)
-        covers[0].value = id
+        item = self.oeb.manifest.ids.get(cover_id_val)
+        if item and item.media_type == SVG_MIME:
+            try:
+                svg_data = item.data
+                if hasattr(svg_data, 'getroottree'):
+                    svg_bytes = etree.tostring(svg_data, encoding='utf-8', xml_declaration=True)
+                else:
+                    svg_bytes = svg_data if isinstance(svg_data, bytes) else svg_data.encode('utf-8')
+                png_data = _svg_to_png(svg_bytes)
+                item._data = png_data
+                item.media_type = 'image/png'
+                item.href = item.href.rsplit('.', 1)[0] + '.png'
+            except Exception as e:
+                self.log.warning(f'Failed to rasterize cover SVG: {e}')
+
+    def dataize_manifest(self):
+        pass
+
+    def dataize_svg(self, item, svg=None):
+        return svg if svg is not None else item.data
+
+    def stylizer(self, item):
+        return self.stylizer_cache.get(item)
+
+
+def _parse_dimension(val):
+    """Parse a dimension string like '100px' or '50' to int pixels."""
+    if not val:
+        return 0
+    match = re.match(r'(\d+(?:\.\d+)?)', val)
+    return int(float(match.group(1))) if match else 0

@@ -178,6 +178,7 @@ class TXTInput(InputFormatPlugin):
         else:
             det_encoding = detect(txt[:4096])
             det_encoding, confidence = det_encoding['encoding'], det_encoding['confidence']
+            confidence = confidence if confidence is not None else 0.0
             if det_encoding and det_encoding.lower().replace('_', '-').strip() in (
                     'gb2312', 'chinese', 'csiso58gb231280', 'euc-cn', 'euccn',
                     'eucgb2312-cn', 'gb2312-1980', 'gb2312-80', 'iso-ir-58'):
@@ -296,7 +297,8 @@ class TXTInput(InputFormatPlugin):
             odi = options.debug_pipeline
             options.debug_pipeline = None
             # Generate oeb from html conversion.
-            oeb = html_input.convert(open(htmlfile, 'rb'), options, 'html', log, {})
+            with open(htmlfile, 'rb') as f:
+                oeb = html_input.convert(f, options, 'html', log, {})
             options.debug_pipeline = odi
         finally:
             for x in self.shifted_files:

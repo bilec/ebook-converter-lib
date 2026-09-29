@@ -103,8 +103,7 @@ DEFAULT_MD_EXTENSIONS = ('footnotes', 'tables', 'toc')
 
 def create_markdown_object(extensions):
     import importlib
-    from ebook_converter.ebooks.markdown import Markdown
-    from markdown import Extension
+    from markdown import Extension, Markdown
 
     class NotBrainDeadMarkdown(Markdown):
         def build_extension(self, ext_name, configs):
@@ -134,7 +133,6 @@ def convert_markdown(txt, title='', extensions=DEFAULT_MD_EXTENSIONS):
 def convert_markdown_with_metadata(txt, title='', extensions=DEFAULT_MD_EXTENSIONS):
     from ebook_converter.ebooks.metadata.book.base import Metadata
     from ebook_converter.utils.date import parse_only_date
-    from ebook_converter.db.write import get_series_values
     if 'meta' not in extensions:
         extensions.append('meta')
     md = create_markdown_object(extensions)
@@ -151,8 +149,15 @@ def convert_markdown_with_metadata(txt, title='', extensions=DEFAULT_MD_EXTENSIO
             if not mf.get('is_multiple'):
                 val = val[0]
             if k == 'series':
-                val, si = get_series_values(val)
-                mi.series_index = 1 if si is None else si
+                val, separator, series_index = val.rpartition('[')
+                if separator and series_index.endswith(']'):
+                    try:
+                        mi.series_index = float(series_index[:-1])
+                    except ValueError:
+                        mi.series_index = 1
+                    val = val.rstrip()
+                else:
+                    mi.series_index = 1
             if k == 'rating':
                 try:
                     val = max(0, min(int(float(val)), 10))

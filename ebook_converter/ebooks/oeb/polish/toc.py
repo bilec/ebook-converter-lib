@@ -329,7 +329,7 @@ def get_nav_landmarks(container):
     nav = find_existing_nav_toc(container)
     if nav and container.has_name(nav):
         root = container.parsed(nav)
-        et = base('epub', 'type')
+        et = base.tag('epub', 'type')
         for elem in root.iterdescendants(base.tag('xhtml', 'nav')):
             if elem.get(et) == 'landmarks':
                 for li in elem.iterdescendants(base.tag('xhtml', 'li')):
@@ -683,7 +683,7 @@ def commit_ncx_toc(container, toc, lang=None, uid=None):
 
 
 def ensure_single_nav_of_type(root, ntype='toc'):
-    et = base('epub', 'type')
+    et = base.tag('epub', 'type')
     navs = [n for n in root.iterdescendants(base.tag('xhtml', 'nav'))
             if n.get(et) == ntype]
     for x in navs[1:]:
@@ -719,9 +719,9 @@ def commit_nav_toc(container, toc, lang=None, landmarks=None,
         if previous_nav is not None:
             root = previous_nav[1]
         else:
-            with open(importlib.resources.file('ebook_converter') /
-                      'data/new_nav.html') as fobj:
-                root = container.parse_xhtml(fobj.read())
+            root = container.parse_xhtml(
+                (importlib.resources.files('ebook_converter') /
+                 'data/new_nav.html').read_text())
         container.replace(tocname, root)
     else:
         root = container.parsed(tocname)
@@ -873,8 +873,8 @@ def toc_to_html(toc, container, toc_name, title, lang=None):
 
     E = ElementMaker(namespace=const.XHTML_NS, nsmap={None: const.XHTML_NS})
     # TODO(gryf): revisit lack of css.
-    css_f = str(importlib.resources.files('ebook_converter') /
-                'data/inline_toc_styles.css')
+    css_f = (importlib.resources.files('ebook_converter') /
+             'data/inline_toc_styles.css').read_text()
     html = E.html(E.head(E.title(title),
                          E.style(css_f, type='text/css')),
                   E.body(E.h2(title), E.ul(),
