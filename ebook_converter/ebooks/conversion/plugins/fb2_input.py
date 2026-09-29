@@ -11,6 +11,7 @@ from lxml import etree
 from ebook_converter import constants as const
 from ebook_converter.customize.conversion import InputFormatPlugin
 from ebook_converter.customize.conversion import OptionRecommendation
+from ebook_converter.utils.xml_parse import safe_xml_fromstring
 
 
 FB2NS = 'http://www.gribuser.ru/xml/fictionbook/2.0'
@@ -48,10 +49,9 @@ class FB2Input(InputFormatPlugin):
         raw = raw.replace(b'\0', b'')
         raw = xml_to_unicode(raw, strip_encoding_pats=True,
                              assume_utf8=True, resolve_entities=True)[0]
-        try:
-            doc = etree.fromstring(raw)
-        except etree.XMLSyntaxError:
-            doc = etree.fromstring(raw.replace('& ', '&amp;'))
+        doc = safe_xml_fromstring(raw)
+        if doc is None:
+            doc = safe_xml_fromstring(raw.replace('& ', '&amp;'))
         if doc is None:
             raise ValueError('The FB2 file is not valid XML')
         doc = ensure_namespace(doc)
@@ -85,9 +85,8 @@ class FB2Input(InputFormatPlugin):
             css = re.sub(r'name\s*=\s*', 'class=', css)
         self.extract_embedded_content(doc)
         log.debug('Converting XML to HTML...')
-        with open(importlib.resources.files('ebook_converter') /
-                  'data/fb2.xsl') as f:
-            ss = f.read()
+        ss = (importlib.resources.files('ebook_converter') /
+                  'data/fb2.xsl').read_text()
         ss = ss.replace("__FB_NS__", fb_ns)
         if options.no_inline_fb2_toc:
             log.info('Disabling generation of inline FB2 TOC')

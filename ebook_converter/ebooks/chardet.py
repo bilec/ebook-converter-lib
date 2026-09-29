@@ -101,8 +101,17 @@ _CHARSET_ALIASES = {"macintosh" : "mac-roman",
 
 
 def detect(*args, **kwargs):
-    from chardet import detect
-    return detect(*args, **kwargs)
+    try:
+        from chardet import detect as cdetect
+    except ImportError:
+        try:
+            from charset_normalizer import detect as cdetect
+        except ImportError:
+            return {'encoding': 'utf-8', 'confidence': 0.0}
+    detected = cdetect(*args, **kwargs)
+    if detected.get('confidence') is None:
+        detected['confidence'] = 0.0
+    return detected
 
 
 def force_encoding(raw, verbose, assume_utf8=False):
