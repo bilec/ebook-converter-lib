@@ -43,8 +43,15 @@ ebook-converter book.docx book.epub
 
 ## Supported formats
 
-Input includes DOCX, EPUB, ODT, TXT, PDB, RTF, MOBI, AZW, FB2, HTML, PDF, and
-LRF. Output includes EPUB, MOBI, DOCX, HTMLZ, TXT, and LRF.
+Input: `azw`, `azw3`, `azw4`, `cbc`, `cbr`, `cbz`, `chm`, `djv`, `djvu`, `docm`,
+`docx`, `epub`, `fb2`, `fbz`, `htm`, `html`, `htmlz`, `lrf`, `markdown`, `md`,
+`mobi`, `odt`, `opf`, `pdb`, `pdf`, `pobi`, `prc`, `rtf`, `shtm`, `shtml`,
+`text`, `textile`, `txt`, `txtz`, `updb`, `xhtm`, `xhtml`.
+
+Output: `azw3`, `docx`, `epub`, `fb2`, `html`, `htmlz`, `lrf`, `mobi`, `oeb`,
+`txt`, `txtz`.
+
+The output format is chosen from the output file extension.
 
 ## Development
 
@@ -52,5 +59,3 @@ LRF. Output includes EPUB, MOBI, DOCX, HTMLZ, TXT, and LRF.
 uv sync --group dev
 uv run pytest
 ```
-
-See [PYPI_RELEASE.md](PYPI_RELEASE.md) for the release procedure.
