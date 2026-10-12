@@ -25,15 +25,22 @@ if not result["success"]:
     raise RuntimeError(result["message"])
 ```
 
-`convert()` returns a dictionary with `success` and `message` keys. Additional
-arguments use the command-line option format:
+`convert()` returns a dictionary with `success` and `message` keys. Use
+`check_deps_str()` to verify that conversion dependencies can load in an
+embedded Python runtime.
+
+### Options
+
+Extra arguments use the command-line option format:
 
 ```python
 convert("book.epub", "book.mobi", "--base-font-size", "12")
 ```
 
-Use `check_deps_str()` to verify that conversion dependencies can load in an
-embedded Python runtime.
+- `--remove-text`: one regular expression per line, every match is deleted.
+  Escape special characters for literal text, e.g. `C\+\+`.
+- Unknown options, stray values and invalid regular expressions fail the
+  conversion.
 
 ## Command line
 

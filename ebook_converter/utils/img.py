@@ -252,7 +252,9 @@ def save_cover_data_to(
     :param letterbox: If True, in addition to fit resize_to inside minify_to,
         the image will be letterboxed (i.e., centered on a black background).
     '''
-    # ponytail: just write raw data; full resize/blend logic deferred until needed
+    # shortcut: resize/grayscale/letterbox options are ignored, port from calibre if a caller needs them
+    if path is None:
+        return image_to_data(image_from_data(data), compression_quality=compression_quality, fmt=data_fmt)
     with open(path, 'wb') as fobj:
         fobj.write(data)
 # }}}

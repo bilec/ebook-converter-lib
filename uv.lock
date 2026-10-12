@@ -204,12 +204,11 @@ wheels = [
 
 [[package]]
 name = "ebook-converter-lib"
-version = "1.1.0"
+version = "1.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },
     { name = "css-parser" },
-    { name = "filelock" },
     { name = "html2text" },
     { name = "lxml" },
     { name = "markdown" },
@@ -219,7 +218,6 @@ dependencies = [
     { name = "python-dateutil" },
     { name = "reportlab" },
     { name = "svglib" },
-    { name = "tinycss" },
 ]
 
 [package.dev-dependencies]
@@ -232,7 +230,6 @@ dev = [
 requires-dist = [
     { name = "beautifulsoup4", specifier = ">=4.9.3" },
     { name = "css-parser", specifier = ">=1.0.6" },
-    { name = "filelock", specifier = ">=3.0.12" },
     { name = "html2text", specifier = ">=2020.1.16" },
     { name = "lxml", specifier = ">=4.9.0" },
     { name = "markdown", specifier = ">=3.0" },
@@ -242,22 +239,12 @@ requires-dist = [
     { name = "python-dateutil", specifier = ">=2.8.1" },
     { name = "reportlab", specifier = ">=4.0" },
     { name = "svglib", specifier = ">=0.9.3" },
-    { name = "tinycss", specifier = ">=0.4" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "pytest", specifier = ">=8.0.0" },
     { name = "ruff", specifier = ">=0.4.0" },
-]
-
-[[package]]
-name = "filelock"
-version = "4.0.6"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/2b/2d/5cb7a5ac017031e96a63173f3d57a8a5162ce36f9ff461e62bc6da4d88ab/filelock-4.0.6.tar.gz", hash = "sha256:323fab3b2fb22d889b29fa83774f60029addddb4b6a1bcfa1e73066eabffb5f2", size = 248237, upload-time = "2026-09-28T22:16:16.257Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a9/3b/b74ae9db2f78f1354278731372ae89870626be7b86cbb46b8d707acd1a98/filelock-4.0.6-py3-none-any.whl", hash = "sha256:9b139fb93b2ac5807f7feaf63aa4546fbd74074a2d3f554c040f40a4694d7b9f", size = 109077, upload-time = "2026-09-28T22:16:14.731Z" },
 ]
 
 [[package]]
@@ -648,12 +635,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/ca/92/3556caee194b318d7
 wheels = [
     { url = "https://files.pythonhosted.org/packages/76/c6/6c1d8b1899be627dada5650a24d8f3cb86a7cd2dd24c59edd1de0cc273e5/svglib-2.2.0-py3-none-any.whl", hash = "sha256:b0f07af5f1c8c77fa4e5788825af9aa4e21e005127997f02031b11edadca96f9", size = 49530, upload-time = "2026-08-14T12:02:24.351Z" },
 ]
-
-[[package]]
-name = "tinycss"
-version = "0.4"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/05/59/af583fff6236c7d2f94f8175c40ce501dcefb8d1b42e4bb7a2622dff689e/tinycss-0.4.tar.gz", hash = "sha256:12306fb50e5e9e7eaeef84b802ed877488ba80e35c672867f548c0924a76716e", size = 87759, upload-time = "2016-09-23T16:30:14.894Z" }
 
 [[package]]
 name = "tinycss2"

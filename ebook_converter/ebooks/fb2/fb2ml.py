@@ -555,7 +555,7 @@ class FB2MLizer(object):
             if added_p:
                 tags.append('p')
         if tag == 'a' and elem_tree.attrib.get('href', None):
-            # Handle only external links for now
+            # shortcut: internal links become plain text (needs ids unique across spine files), add when FB2 users ask
             if urllib.parse.urlparse(elem_tree.attrib['href']).netloc:
                 p_txt, p_tag = self.ensure_p()
                 fb2_out += p_txt

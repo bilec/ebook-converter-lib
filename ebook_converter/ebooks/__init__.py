@@ -110,37 +110,9 @@ def render_html_svg_workaround(path_to_html, log, width=590, height=750):
         except Exception:
             pass
 
-    if data is None:
-        data = render_html_data(path_to_html, width, height)
+    # shortcut: HTML-only covers (no <img>/SVG image) yield no cover; rendering HTML needs a
+    # browser engine (Qt in calibre), none on Chaquopy. Upgrade: Pillow title/author cover in calibre_cover().
     return data
-
-
-def render_html_data(path_to_html, width, height):
-    from ebook_converter.ptempfile import TemporaryDirectory
-    from ebook_converter.utils.ipc.simple_worker import fork_job, WorkerError
-    result = {}
-
-    def report_error(text=''):
-        print(f'Failed to render {path_to_html}')
-        # file=sys.stderr)
-        if text:
-            print(text)  # , file=sys.stderr)
-        if result and result['stdout_stderr']:
-            with open(result['stdout_stderr'], 'rb') as f:
-                print(f.read())  # , file=sys.stderr)
-
-    with TemporaryDirectory('-render-html') as tdir:
-        try:
-            result = fork_job('ebook_converter.ebooks.render_html', 'main',
-                              args=(path_to_html, tdir, 'jpeg'))
-        except WorkerError as e:
-            report_error(e.orig_tb)
-        else:
-            if result['result']:
-                with open(os.path.join(tdir, 'rendered.jpeg'), 'rb') as f:
-                    return f.read()
-            else:
-                report_error()
 
 
 def check_ebook_format(stream, current_guess):
