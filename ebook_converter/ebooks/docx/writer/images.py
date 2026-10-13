@@ -7,6 +7,7 @@ import urllib.parse
 from lxml import etree
 
 from ebook_converter.ebooks.docx.images import pt_to_emu
+from ebook_converter.ebooks.oeb.base import urlnormalize
 from ebook_converter.utils.filenames import ascii_filename
 from ebook_converter.utils import img as uimg
 from ebook_converter.utils.imghdr import identify
@@ -63,7 +64,7 @@ class ImagesManager(object):
         src = img.get('src')
         if not src:
             return
-        href = self.abshref(src)
+        href = urlnormalize(self.abshref(src))
         try:
             rid = self.read_image(href).rid
         except AttributeError:

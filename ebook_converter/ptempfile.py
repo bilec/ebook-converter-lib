@@ -8,7 +8,6 @@ import tempfile
 
 from ebook_converter.constants_old import __version__, __appname__, \
         filesystem_encoding
-from ebook_converter import polyglot
 
 
 def cleanup(path):
@@ -88,20 +87,10 @@ def base_dir():
         # delete the temp dirs of running programs is a good idea!
         _base_dir = None
     if _base_dir is None:
-        td = os.environ.get('CALIBRE_WORKER_TEMP_DIR', None)
-        if td is not None:
-            from ebook_converter.utils.serialize import msgpack_loads
-            try:
-                td = msgpack_loads(polyglot.from_hex_bytes(td))
-            except Exception:
-                td = None
-        if td and os.path.exists(td):
-            _base_dir = td
-        else:
-            base = os.environ.get('CALIBRE_TEMP_DIR', None)
-            prefix = app_prefix('tmp_')
-            _base_dir = tempfile.mkdtemp(prefix=prefix, dir=base)
-            atexit.register(remove_dir, _base_dir)
+        base = os.environ.get('CALIBRE_TEMP_DIR', None)
+        prefix = app_prefix('tmp_')
+        _base_dir = tempfile.mkdtemp(prefix=prefix, dir=base)
+        atexit.register(remove_dir, _base_dir)
 
         try:
             tempfile.gettempdir()

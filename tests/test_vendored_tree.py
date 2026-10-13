@@ -24,11 +24,8 @@ PACKAGE_ROOT = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ebook_c
 IMPORT = re.compile(r"^\s*(?:from|import)\s+(ebook_converter[\w.]*)", re.M)
 
 BASELINE = {
-    "ebook_converter.db.categories",
     # Library-management leftovers: reachable only from calibre database code
     # that this fork does not ship, never from a conversion.
-    "ebook_converter.db.categories",
-    "ebook_converter.ebooks.metadata.book.serialize",
     "ebook_converter.ebooks.tweak",
     "ebook_converter.utils.ipc.simple_worker",
 }
