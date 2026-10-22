@@ -12,8 +12,10 @@ itself derived from the conversion components of
 python -m pip install ebook-converter-lib
 ```
 
-Python 3.11 or newer is required. PDF conversion also requires Poppler tools
-(`pdftohtml`, `pdfinfo`, and `pdftoppm`) available on `PATH`.
+Python 3.11 or newer is required. PDF input uses PDFium through `pypdfium2`
+(installed automatically); no external tools are needed. Text, embedded images,
+the outline as table of contents, title, author and a first-page cover are
+taken from the PDF.
 
 ## Use as a library
 
