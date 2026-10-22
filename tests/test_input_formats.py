@@ -196,5 +196,36 @@ for _ext in HTML_ALIASES:
     setattr(TestListedExtensions, f"test_input_{_ext}", _html_alias_test(_ext))
 
 
+class TestCssWarnings(TempDirTestCase):
+    """css_parser warnings must be logged, not abort the conversion."""
+
+    prefix = "econverter_css_"
+
+    def test_missing_css_import_still_converts(self):
+        site = self.tmp_path("site")
+        os.makedirs(site)
+        with open(os.path.join(site, "style.css"), "w") as css:
+            css.write('@import url("missing.css");\np { color: black; }\n')
+        entry = os.path.join(site, "index.html")
+        with open(entry, "w") as html:
+            html.write('<html><head><link rel="stylesheet" href="style.css"/></head><body><p>Text</p></body></html>')
+        out = self.tmp_path("css.epub")
+        convert(entry, out)
+        self.assert_artifact(out, "css import")
+
+    def test_remote_css_import_is_not_fetched(self):
+        # Space in the URL makes urllib raise before connecting, so a fetch attempt fails loudly offline
+        site = self.tmp_path("remote")
+        os.makedirs(site)
+        with open(os.path.join(site, "style.css"), "w") as css:
+            css.write('@import url("https://fonts.example/css2?family=Open Sans");\np { color: black; }\n')
+        entry = os.path.join(site, "index.html")
+        with open(entry, "w") as html:
+            html.write('<html><head><link rel="stylesheet" href="style.css"/></head><body><p>Text</p></body></html>')
+        out = self.tmp_path("remote.epub")
+        convert(entry, out)
+        self.assert_artifact(out, "remote css import")
+
+
 if __name__ == "__main__":
     unittest.main()
