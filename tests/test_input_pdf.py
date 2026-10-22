@@ -75,6 +75,24 @@ class TestPDFInput(TempDirTestCase):
 
         self.assertIn("áľščÁĽŠČ", " ".join(document.itertext()))
 
+    def test_html_parse_survives_libxml2_without_ucs4(self):
+        # Chaquopy's libxml2 can't decode the UCS-4 buffer lxml passes for non-BMP str (issue #24)
+        from lxml import etree
+
+        from ebook_converter.ebooks.oeb.parse_utils import parse_html
+
+        fromstring = etree.fromstring
+
+        def chaquopy_fromstring(text, *args, **kwargs):
+            if isinstance(text, str) and any(ord(char) > 0xFFFF for char in text):
+                raise etree.XMLSyntaxError("Char 0x0 out of allowed range", 9, 1, 2, "<string>")
+            return fromstring(text, *args, **kwargs)
+
+        with patch.object(etree, "fromstring", chaquopy_fromstring):
+            document = parse_html("<html><body><p>Let 𝐴 be a set & more</p></body></html>")
+
+        self.assertIn("Let 𝐴 be a set", " ".join(document.itertext()))
+
     def test_missing_pdfinfo_uses_generic_metadata(self):
         from ebook_converter.ebooks.metadata.pdf import read_info
 
