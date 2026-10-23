@@ -1,13 +1,11 @@
 name: Android wheels
 
 # PyPI has pypdfium2 Android wheels for arm64 and armv7 only; econverter also ships x86_64.
+# Runs with every release; it only builds when the pyproject pin has no wheel release yet.
 on:
+  push:
+    tags: ["v*"]
   workflow_dispatch:
-    inputs:
-      pypdfium2:
-        description: pypdfium2 version to repackage for Android x86_64
-        required: true
-        default: "5.14.0"
 
 permissions:
   contents: write
@@ -16,30 +14,43 @@ jobs:
   pypdfium2-x86_64:
     runs-on: ubuntu-latest
     env:
-      VERSION: ${{ inputs.pypdfium2 }}
       # pypdfium2's setup verifies the pdfium-binaries attestation with gh
       GH_TOKEN: ${{ github.token }}
     steps:
+      - uses: actions/checkout@v4
+      - name: Resolve version
+        run: |
+          version=$(sed -n 's/.*"pypdfium2==\([0-9.]*\)".*/\1/p' pyproject.toml)
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          if gh release view "pypdfium2-$version-android" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "SKIP=true" >> "$GITHUB_ENV"
+          fi
       - uses: astral-sh/setup-uv@v5
+        if: env.SKIP != 'true'
         with:
           python-version: "3.12"
       - name: Fetch sdist
+        if: env.SKIP != 'true'
         run: |
-          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           uvx --from pip pip download --no-deps --no-binary :all: "pypdfium2==$VERSION" -d .
           tar xzf "pypdfium2-$VERSION.tar.gz"
       - name: Build wheel
+        if: env.SKIP != 'true'
         env:
           PDFIUM_PLATFORM: android_x64
         run: cd "pypdfium2-$VERSION" && uv build --wheel -o ../dist
       - name: Check wheel
+        if: env.SKIP != 'true'
         run: |
           wheel="dist/pypdfium2-$VERSION-py3-none-android_23_x86_64.whl"
           unzip -p "$wheel" pypdfium2_raw/libpdfium.so > libpdfium.so
           file libpdfium.so | grep -q "x86-64"
       - name: Publish release
+        if: env.SKIP != 'true'
         run: >
           gh release create "pypdfium2-$VERSION-android" dist/*.whl
           --repo "$GITHUB_REPOSITORY"
+          --latest=false
           --title "pypdfium2 $VERSION for Android x86_64"
           --notes "Unofficial repackaging of pypdfium2 $VERSION with pdfium-binaries' android-x64 build, for Chaquopy --find-links."
