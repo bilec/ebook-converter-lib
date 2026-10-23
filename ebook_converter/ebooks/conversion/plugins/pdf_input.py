@@ -33,6 +33,10 @@ class PDFInput(InputFormatPlugin):
         from ebook_converter.ebooks.metadata.meta import get_metadata
         log.debug('Retrieving document metadata...')
         mi = get_metadata(stream, 'pdf')
+        if mi.cover_data and mi.cover_data[1]:
+            with open('cover.jpg', 'wb') as cover:
+                cover.write(mi.cover_data[1])
+            mi.cover = 'cover.jpg'
         opf = OPFCreator(os.getcwd(), mi)
 
         manifest = [('index.html', None)]

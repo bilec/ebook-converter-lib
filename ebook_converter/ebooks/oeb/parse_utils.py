@@ -19,6 +19,11 @@ RECOVER_PARSER = etree.XMLParser(recover=True, no_network=True,
 LOG = logging
 
 
+def _fromstring(data):
+    # lxml passes non-BMP str as UCS-4, which Chaquopy's iconv-less libxml2 can't decode
+    return etree.fromstring(data.encode('utf-8') if isinstance(data, str) else data)
+
+
 class NotHTML(Exception):
 
     def __init__(self, root_tag):
@@ -113,7 +118,7 @@ def _html4_parse(data):
             elem.text = elem.text.strip('-')
     data = etree.tostring(data, encoding='unicode')
 
-    data = etree.fromstring(data)
+    data = _fromstring(data)
     return data
 
 
@@ -205,13 +210,13 @@ def parse_html(data, log=None, decoder=None, preprocessor=None,
 
     # Try with more & more drastic measures to parse
     try:
-        data = etree.fromstring(data)
+        data = _fromstring(data)
         check_for_html5(pre, data)
     except (HTML5Doc, etree.XMLSyntaxError):
         log.debug('Initial parse failed, using more forgiving parsers')
         raw = data = entities.xml_replace_entities(raw)
         try:
-            data = etree.fromstring(data)
+            data = _fromstring(data)
             check_for_html5(pre, data)
         except (HTML5Doc, etree.XMLSyntaxError):
             log.debug('Parsing %s as HTML', filename)
@@ -265,12 +270,12 @@ def parse_html(data, log=None, decoder=None, preprocessor=None,
         data = etree.tostring(data, encoding='unicode')
 
         try:
-            data = etree.fromstring(data)
+            data = _fromstring(data)
         except:
             data = data.replace(':=', '=').replace(':>', '>')
             data = data.replace('<http:/>', '')
             try:
-                data = etree.fromstring(data)
+                data = _fromstring(data)
             except etree.XMLSyntaxError:
                 log.warning('Stripping comments from %s', filename)
                 data = re.compile(r'<!--.*?-->', re.DOTALL).sub('', data)
@@ -279,11 +284,11 @@ def parse_html(data, log=None, decoder=None, preprocessor=None,
                     '')
                 data = data.replace("<?xml version='1.0' encoding='utf-8'??>", '')
                 try:
-                    data = etree.fromstring(data)
+                    data = _fromstring(data)
                 except etree.XMLSyntaxError:
                     log.warning('Stripping meta tags from %s', filename)
                     data = re.sub(r'<meta\s+[^>]+?>', '', data)
-                    data = etree.fromstring(data)
+                    data = _fromstring(data)
     elif namespace(data.tag) != const.XHTML_NS:
         # OEB_DOC_NS, but possibly others
         ns = namespace(data.tag)

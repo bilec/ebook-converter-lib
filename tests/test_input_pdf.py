@@ -16,16 +16,88 @@ from unittest.mock import patch
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
-from tests.support import TempDirTestCase, html_of
+from tests.support import TempDirTestCase, convert, html_of
 
 
 def _make_minimal_pdf(path):
     document = canvas.Canvas(path, pagesize=letter)
-    document.drawString(50, 750, "Test PDF Document")
-    document.drawString(50, 700, "This PDF contains extractable text.")
-    document.drawString(50, 650, "Café")
+    document.setTitle("Spacing Title")
+    document.setAuthor("Ada Lovelace")
+    for number in range(1, 4):
+        document.bookmarkPage(f"chapter{number}")
+        document.addOutlineEntry(f"Chapter {number}", f"chapter{number}", level=0)
+        document.drawString(50, 750, f"Chapter {number} body")
+        if number == 1:
+            # TeX-style: words positioned apart without space glyphs
+            x = 50
+            for word in ("discrete", "structures", "graphs"):
+                document.drawString(x, 700, word)
+                x += document.stringWidth(word, "Helvetica", 12) + 3.3
+            document.drawString(50, 650, "Café")
+        document.showPage()
+    document.save()
+
+
+def _make_image_pdf(path, jpeg_path, png_path):
+    from PIL import Image
+
+    Image.new("RGB", (64, 48), "red").save(jpeg_path, quality=90)
+    Image.new("RGB", (64, 48), "blue").save(png_path)
+    document = canvas.Canvas(path, pagesize=letter)
+    document.drawString(50, 750, "Before image")
+    document.drawImage(jpeg_path, 50, 550, width=160, height=120)
+    document.drawString(50, 500, "Between images")
+    document.drawImage(png_path, 50, 300, width=160, height=120)
+    document.drawString(50, 250, "After image")
     document.showPage()
     document.save()
+
+
+class TestPDFImages(TempDirTestCase):
+    """Images embedded in a PDF land in the book where they sit on the page."""
+
+    prefix = "econverter_test_pdf_images_"
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls._jpeg = os.path.join(cls._tmpdir, "photo.jpg")
+        cls._pdf = os.path.join(cls._tmpdir, "images.pdf")
+        _make_image_pdf(cls._pdf, cls._jpeg, os.path.join(cls._tmpdir, "chart.png"))
+
+    def _body(self, epub):
+        with zipfile.ZipFile(epub) as archive:
+            pages = (archive.read(name).decode("utf-8") for name in archive.namelist() if name.endswith(".html"))
+            return next(page for page in pages if "Before image" in page)
+
+    def test_images_sit_between_the_surrounding_text(self):
+        epub = self.tmp_path("images.epub")
+        convert(self._pdf, epub)
+
+        body = self._body(epub)
+        first = body.index("<img")
+        second = body.index("<img", first + 1)
+        self.assertLess(body.index("Before image"), first)
+        self.assertLess(first, body.index("Between images"))
+        self.assertLess(body.index("Between images"), second)
+        self.assertLess(second, body.index("After image"))
+
+    def test_jpeg_is_kept_byte_for_byte(self):
+        epub = self.tmp_path("jpeg.epub")
+        convert(self._pdf, epub)
+
+        with open(self._jpeg, "rb") as original, zipfile.ZipFile(epub) as archive:
+            data = original.read()
+            self.assertIn(data, [archive.read(name) for name in archive.namelist()])
+
+    def test_no_images_option_skips_them(self):
+        import converter
+
+        epub = self.tmp_path("no-images.epub")
+        result = converter.convert(self._pdf, epub, "--no-images")
+
+        self.assertTrue(result["success"], result["message"])
+        self.assertNotIn("<img", self._body(epub))
 
 
 class TestPDFInput(TempDirTestCase):
@@ -38,6 +110,17 @@ class TestPDFInput(TempDirTestCase):
         super().setUpClass()
         cls._pdf = os.path.join(cls._tmpdir, "test.pdf")
         _make_minimal_pdf(cls._pdf)
+
+    def _epub(self):
+        if not hasattr(type(self), "_converted"):
+            convert(self._pdf, self.tmp_path("shared.epub"))
+            type(self)._converted = self.tmp_path("shared.epub")
+        return self._converted
+
+    def _entry(self, suffix):
+        with zipfile.ZipFile(self._epub()) as archive:
+            name = next(name for name in archive.namelist() if name.endswith(suffix))
+            return archive.read(name).decode("utf-8")
 
     def test_pdf_to_epub_succeeds(self):
         import converter
@@ -52,15 +135,34 @@ class TestPDFInput(TempDirTestCase):
             self.assertIn("META-INF/container.xml", archive.namelist())
         self.assertIn("Café", html_of(output_path))
 
+    def test_words_positioned_apart_keep_their_spaces(self):
+        self.assertIn("discrete structures graphs", html_of(self._epub()))
+
+    def test_outline_becomes_table_of_contents(self):
+        ncx = self._entry(".ncx")
+        for number in range(1, 4):
+            self.assertIn(f"Chapter {number}", ncx)
+
+    def test_title_and_author_come_from_pdf_info(self):
+        opf = self._entry(".opf")
+        self.assertIn("Spacing Title</dc:title>", opf)
+        self.assertIn("Ada Lovelace</dc:creator>", opf)
+
+    def test_first_page_becomes_cover(self):
+        self.assertIn('name="cover"', self._entry(".opf"))
+
     def test_html_preserves_czech_text_without_page_headings(self):
-        from ebook_converter.ebooks.pdf.pdftohtml import pypdf_to_html
+        from ebook_converter.ebooks.pdf.pdftohtml import pdftohtml
 
-        page = type("Page", (), {"extract_text": lambda self: "Český text"})()
-        reader = type("Reader", (), {"pages": [page]})()
-        with patch("pypdf.PdfReader", return_value=reader):
-            pypdf_to_html(self._tmpdir, self._pdf)
+        page = type("Page", (), {"get_textpage": lambda self: textpage, "get_objects": lambda self, **_: []})()
+        textpage = type("TextPage", (), {"get_text_bounded": lambda self: "Český text"})()
+        document = type("Doc", (), {"__iter__": lambda self: iter([page]), "get_toc": lambda self: []})()
+        output_dir = self.tmp_path("czech")
+        os.makedirs(output_dir)
+        with patch("pypdfium2.PdfDocument", return_value=document):
+            pdftohtml(output_dir, self._pdf, no_images=False)
 
-        with open(os.path.join(self._tmpdir, "index.html"), encoding="utf-8") as index:
+        with open(os.path.join(output_dir, "index.html"), encoding="utf-8") as index:
             html = index.read()
         self.assertIn("Český text", html)
         self.assertNotIn("<h2>", html)
@@ -75,11 +177,33 @@ class TestPDFInput(TempDirTestCase):
 
         self.assertIn("áľščÁĽŠČ", " ".join(document.itertext()))
 
-    def test_missing_pdfinfo_uses_generic_metadata(self):
-        from ebook_converter.ebooks.metadata.pdf import read_info
+    def test_html_parse_survives_libxml2_without_ucs4(self):
+        # Chaquopy's libxml2 can't decode the UCS-4 buffer lxml passes for non-BMP str (issue #24)
+        from lxml import etree
 
-        with patch("subprocess.check_output", side_effect=FileNotFoundError):
-            self.assertEqual(read_info(self._tmpdir, get_cover=False), {})
+        from ebook_converter.ebooks.oeb.parse_utils import parse_html
+
+        fromstring = etree.fromstring
+
+        def chaquopy_fromstring(text, *args, **kwargs):
+            if isinstance(text, str) and any(ord(char) > 0xFFFF for char in text):
+                raise etree.XMLSyntaxError("Char 0x0 out of allowed range", 9, 1, 2, "<string>")
+            return fromstring(text, *args, **kwargs)
+
+        with patch.object(etree, "fromstring", chaquopy_fromstring):
+            document = parse_html("<html><body><p>Let 𝐴 be a set & more</p></body></html>")
+
+        self.assertIn("Let 𝐴 be a set", " ".join(document.itertext()))
+
+    def test_metadata_is_read_without_poppler(self):
+        from ebook_converter.ebooks.metadata.pdf import get_metadata
+
+        with open(self._pdf, "rb") as stream, patch("subprocess.check_output", side_effect=FileNotFoundError):
+            metadata = get_metadata(stream)
+
+        self.assertEqual(metadata.title, "Spacing Title")
+        self.assertEqual(metadata.authors, ["Ada Lovelace"])
+        self.assertEqual(metadata.cover_data[0], "jpeg")
 
 
 if __name__ == "__main__":

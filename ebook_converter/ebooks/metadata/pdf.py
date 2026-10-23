@@ -3,9 +3,7 @@ Read meta information from PDF files
 """
 import functools
 import os
-import re
 import shutil
-import subprocess
 
 from ebook_converter.ptempfile import TemporaryDirectory
 from ebook_converter.ebooks.metadata import (
@@ -13,94 +11,16 @@ from ebook_converter.ebooks.metadata import (
 
 
 def read_info(outputdir, get_cover):
-    ''' Read info dict and cover from a pdf file named src.pdf in outputdir.
-    Note that this function changes the cwd to outputdir and is therefore not
-    thread safe. Run it using fork_job. This is necessary as there is no safe
-    way to pass unicode paths via command line arguments. This also ensures
-    that if poppler crashes, no stale file handles are left for the original
-    file, only for src.pdf.'''
-    pdfinfo = 'pdfinfo'
-    pdftoppm = 'pdftoppm'
-    source_file = os.path.join(outputdir, 'src.pdf')
-    cover_file = os.path.join(outputdir, 'cover')
-    ans = {}
+    ''' Read the info dict of src.pdf in outputdir and, if get_cover, render
+    its first page into outputdir as cover.jpg.'''
+    import pypdfium2
 
-    try:
-        raw = subprocess.check_output([pdfinfo, '-enc', 'UTF-8', '-isodates',
-                                       source_file])
-    except FileNotFoundError:
-        return ans
-    except subprocess.CalledProcessError as e:
-        print(f'pdfinfo errored out with return code: {e.returncode}')
-        return None
-    try:
-        info_raw = raw.decode('utf-8')
-    except UnicodeDecodeError:
-        print('pdfinfo returned no UTF-8 data')
-        return None
-
-    for line in info_raw.splitlines():
-        if ':' not in line:
-            continue
-        field, val = line.partition(':')[::2]
-        val = val.strip()
-        if field and val:
-            ans[field] = val.strip()
-
-    # Now read XMP metadata
-    # Versions of poppler before 0.47.0 used to print out both the Info dict
-    # and XMP metadata packet together. However, since that changed in
-    # https://cgit.freedesktop.org/poppler/poppler/commit/?id=c91483aceb1b640771f572cb3df9ad707e5cad0d
-    # we can no longer rely on it.
-    try:
-        raw = subprocess.check_output([pdfinfo, '-meta', source_file]).strip()
-    except FileNotFoundError:
-        return ans
-    except subprocess.CalledProcessError as e:
-        print('pdfinfo failed to read XML metadata with return code: '
-              f'{e.returncode}')
-    else:
-        parts = re.split(br'^Metadata:', raw, 1, flags=re.MULTILINE)
-        if len(parts) > 1:
-            # old poppler < 0.47.0
-            raw = parts[1].strip()
-        if raw:
-            ans['xmp_metadata'] = raw
-
-    if get_cover:
-        try:
-            subprocess.check_call([pdftoppm, '-singlefile', '-jpeg',
-                                   '-cropbox', source_file, cover_file])
-        except FileNotFoundError:
-            pass
-        except subprocess.CalledProcessError as e:
-            print(f'pdftoppm errored out with return code: {e.returncode}')
-
+    document = pypdfium2.PdfDocument(os.path.join(outputdir, 'src.pdf'))
+    ans = {key: value for key, value in document.get_metadata_dict().items() if value}
+    if get_cover and len(document):
+        image = document[0].render(scale=2).to_pil().convert('RGB')
+        image.save(os.path.join(outputdir, 'cover.jpg'), quality=90)
     return ans
-
-
-def page_images(pdfpath, outputdir='.', first=1, last=1, image_format='jpeg',
-                prefix='page-images'):
-    pdftoppm = 'pdftoppm'
-    outputdir = os.path.abspath(outputdir)
-    args = {}
-    try:
-        subprocess.check_call([
-            pdftoppm, '-cropbox', '-' + image_format, '-f', str(first),
-            '-l', str(last), pdfpath, os.path.join(outputdir, prefix)
-        ], **args)
-    except subprocess.CalledProcessError as e:
-        raise ValueError('Failed to render PDF, pdftoppm errorcode: %s' %
-                         e.returncode)
-
-
-def is_pdf_encrypted(path_to_pdf):
-    pdfinfo = 'pdfinfo'
-    raw = subprocess.check_output([pdfinfo, path_to_pdf])
-    q = re.search(br'^Encrypted:\s*(\S+)', raw, flags=re.MULTILINE)
-    if q is not None:
-        return q.group(1) == b'yes'
-    return False
 
 
 def get_metadata(stream, cover=True):

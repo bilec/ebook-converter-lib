@@ -1,37 +1,37 @@
-import errno
 import html
 import os
-import re
-import shutil
-import subprocess
 
 from lxml import etree
 
-from ebook_converter.ebooks import ConversionError, DRMError
-from ebook_converter.ebooks.chardet import xml_to_unicode
-from ebook_converter.ptempfile import PersistentTemporaryFile
-from ebook_converter.utils.cleantext import clean_xml_chars
-from ebook_converter.utils import directory
-from ebook_converter.utils import entities
+from ebook_converter.ebooks import ConversionError
 
 
-def popen(cmd, **kw):
-    return subprocess.Popen(cmd, **kw)
+def pdftohtml(output_dir, pdf_path, no_images):
+    '''
+    Write the PDF text and embedded images into output_dir as index.html, with
+    a p<N> anchor per page, and its outline as toc.ncx.
+    '''
+    import pypdfium2
+    import pypdfium2.raw as pdfium_c
 
-
-def pypdf_to_html(output_dir, pdf_path):
-    from pypdf import PdfReader
-
+    document = pypdfium2.PdfDocument(pdf_path)
     parts = []
-    for page_number, page in enumerate(PdfReader(pdf_path).pages, 1):
-        text = page.extract_text()
-        if text:
-            parts.append(
-                '<a id="p{page_number}"></a><p>{text}</p>'.format(
-                    page_number=page_number,
-                    text=html.escape(text).replace('\n', '<br>\n'),
-                )
-            )
+    for page_number, page in enumerate(document, 1):
+        textpage = page.get_textpage()
+        images = [] if no_images else list(page.get_objects(filter=[pdfium_c.FPDF_PAGEOBJ_IMAGE]))
+        if images:
+            pieces = text_and_images(textpage, images, output_dir, page_number)
+        else:
+            pieces = [textpage.get_text_bounded()]
+        body = ''
+        for index, piece in enumerate(pieces):
+            # pieces alternate text, image file, text, ...
+            if index % 2:
+                body += '<p><img src="{}" alt=""/></p>'.format(piece)
+            elif piece.strip():
+                body += '<p>{}</p>'.format(html.escape(piece.replace('\r\n', '\n')).replace('\n', '<br>\n'))
+        if body:
+            parts.append('<a id="p{}"></a>{}'.format(page_number, body))
 
     if not parts:
         raise ConversionError('Could not extract text from PDF')
@@ -42,150 +42,59 @@ def pypdf_to_html(output_dir, pdf_path):
             '<meta http-equiv="Content-Type" content="text/html; charset=utf-8"><title>PDF</title>'
             '</head><body>{}</body></html>'.format(''.join(parts))
         )
+    write_outline(document, output_dir)
 
 
-def pdftohtml(output_dir, pdf_path, no_images, as_xml=False):
-    '''
-    Convert the pdf into html using the pdftohtml app.
-    This will write the html as index.html into output_dir.
-    It will also write all extracted images to the output_dir
-    '''
-
-    pdfsrc = os.path.join(output_dir, 'src.pdf')
-    index = os.path.join(output_dir, 'index.'+('xml' if as_xml else 'html'))
-
-    with open(pdf_path, 'rb') as src, open(pdfsrc, 'wb') as dest:
-        shutil.copyfileobj(src, dest)
-
-    with directory.CurrentDir(output_dir):
-        cmd = ['pdftohtml', '-enc', 'UTF-8', '-noframes', '-p', '-nomerge',
-               '-nodrm', os.path.basename(pdfsrc), os.path.basename(index)]
-
-        if no_images:
-            cmd.append('-i')
-        if as_xml:
-            cmd.append('-xml')
-
-        logf = PersistentTemporaryFile('pdftohtml_log')
-
-        try:
-            ret = subprocess.call(cmd, stderr=logf._fd, stdout=logf._fd)
-        except OSError as err:
-            if err.errno == errno.ENOENT:
-                if not as_xml:
-                    logf.close()
-                    pypdf_to_html(output_dir, pdf_path)
-                    return
-                raise ConversionError('Could not find pdftohtml, check it is '
-                                      'in your PATH')
-            else:
-                raise
-
-        logf.flush()
-        logf.close()
-
-        with open(logf.name) as fobj:
-            out = fobj.read().strip()
-
-        if ret != 0:
-            raise ConversionError('pdftohtml failed with return code: '
-                                  '%d\n%s' % (ret, out))
-        if out:
-            print("pdftohtml log:")
-            print(out)
-        if not os.path.exists(index) or os.stat(index).st_size < 100:
-            raise DRMError()
-
-        if not as_xml:
-            with open(index, 'r+b') as i:
-                raw = i.read().decode('utf-8', 'replace')
-                raw = flip_images(raw)
-                raw = raw.replace('<head', '<!-- created by ebook-converter\'s'
-                                  ' pdftohtml -->\n  <head', 1)
-                i.seek(0)
-                i.truncate()
-                # versions of pdftohtml >= 0.20 output self closing <br> tags,
-                # this breaks the pdf heuristics regexps, so replace them
-                raw = raw.replace('<br/>', '<br>')
-                raw = re.sub(r'<a\s+name=(\d+)', r'<a id="\1"', raw,
-                             flags=re.I)
-                raw = re.sub(r'<a id="(\d+)"', r'<a id="p\1"', raw,
-                             flags=re.I)
-                raw = re.sub(r'<a href="index.html#(\d+)"', r'<a href="#p\1"',
-                             raw, flags=re.I)
-                raw = entities.xml_replace_entities(raw)
-                raw = raw.replace('\u00a0', ' ')
-
-                i.write(raw.encode('utf-8'))
-
-            cmd = ['pdftohtml', '-f', '1', '-l', '1', '-xml', '-i', '-enc',
-                   'UTF-8', '-noframes', '-p', '-nomerge', '-nodrm', '-q',
-                   '-stdout', os.path.basename(pdfsrc)]
-
-            raw = subprocess.check_output(cmd).strip()
-            if raw:
-                parse_outline(raw, output_dir)
-
-        try:
-            os.remove(pdfsrc)
-        except Exception:
-            pass
+def text_and_images(textpage, images, output_dir, page_number):
+    '''Page text split at the first character below each image's top edge,
+    with the saved image file names in between.'''
+    count = textpage.count_chars()
+    placed = []
+    for index, image in enumerate(images):
+        top = image.get_bounds()[3]
+        split = next((i for i in range(count) if below(textpage.get_charbox(i), top)), count)
+        placed.append((split, -top, save_image(image, output_dir, 'img-%d-%d' % (page_number, index))))
+    pieces, start = [], 0
+    for split, _, name in sorted(placed):
+        pieces += [textpage.get_text_range(start, split - start), name]
+        start = split
+    return pieces + [textpage.get_text_range(start)]
 
 
-def parse_outline(raw, output_dir):
-    raw = clean_xml_chars(xml_to_unicode(raw, strip_encoding_pats=True,
-                                         assume_utf8=True)[0])
-    outline = etree.fromstring(raw).xpath('(//outline)[1]')
-    if outline:
-        from ebook_converter.ebooks.oeb.polish.toc import TOC, create_ncx
-        outline = outline[0]
-        toc = TOC()
-        count = [0]
-
-        def process_node(node, toc):
-            for child in node.iterchildren('*'):
-                if child.tag == 'outline':
-                    parent = toc.children[-1] if toc.children else toc
-                    process_node(child, parent)
-                else:
-                    if child.text:
-                        page = child.get('page', '1')
-                        toc.add(child.text, 'index.html', 'p' + page)
-                        count[0] += 1
-        process_node(outline, toc)
-        if count[0] > 2:
-            root = create_ncx(toc, (lambda x: x), 'pdftohtml', 'en',
-                              'pdftohtml')
-            with open(os.path.join(output_dir, 'toc.ncx'), 'wb') as f:
-                f.write(etree.tostring(root, pretty_print=True,
-                                       with_tail=False, encoding='utf-8',
-                                       xml_declaration=True))
+def below(charbox, top):
+    left, bottom, right, char_top = charbox
+    # spaces and generated line breaks have no height
+    return char_top > bottom and char_top < top
 
 
-def flip_image(img, flip):
-    from ebook_converter.utils.img import image_to_data
-    from ebook_converter.utils.img import image_and_format_from_data
-    from ebook_converter.utils.img import flip_image
-    with open(img, 'r+b') as f:
-        img, fmt = image_and_format_from_data(f.read())
-        img = flip_image(img, horizontal='x' in flip, vertical='y' in flip)
-        f.seek(0), f.truncate()
-        f.write(image_to_data(img, fmt=fmt))
+def save_image(image, output_dir, stem):
+    if image.get_filters(skip_simple=True) == ['DCTDecode']:
+        # shortcut: a JPEG's soft mask (alpha) is dropped, render it like PNGs if transparent JPEGs show up
+        with open(os.path.join(output_dir, stem + '.jpg'), 'wb') as jpeg:
+            image.extract(jpeg)
+        return stem + '.jpg'
+    # Rendering applies masks and decodes formats readers lack, such as JPEG 2000
+    image.get_bitmap(render=True).to_pil().save(os.path.join(output_dir, stem + '.png'))
+    return stem + '.png'
 
 
-def flip_images(raw):
-    for match in re.finditer('<IMG[^>]+/?>', raw, flags=re.I):
-        img = match.group()
-        m = re.search(r'class="(x|y|xy)flip"', img)
-        if m is None:
+def write_outline(document, output_dir):
+    from ebook_converter.ebooks.oeb.polish.toc import TOC, create_ncx
+
+    toc = TOC()
+    parents = [toc]
+    count = 0
+    for item in document.get_toc():
+        dest = item.get_dest()
+        index = dest.get_index() if dest else None
+        title = item.get_title()
+        if index is None or not title:
             continue
-        flip = m.group(1)
-        src = re.search(r'src="([^"]+)"', img)
-        if src is None:
-            continue
-        img = src.group(1)
-        if not os.path.exists(img):
-            continue
-        flip_image(img, flip)
-    raw = re.sub(r'<STYLE.+?</STYLE>\s*', '', raw, flags=re.I | re.DOTALL)
-    return raw
+        del parents[item.level + 1:]
+        parents.append(parents[-1].add(title, 'index.html', 'p%d' % (index + 1)))
+        count += 1
+    if count > 2:
+        root = create_ncx(toc, (lambda x: x), 'pdftohtml', 'en', 'pdftohtml')
+        with open(os.path.join(output_dir, 'toc.ncx'), 'wb') as f:
+            f.write(etree.tostring(root, pretty_print=True, with_tail=False,
+                                   encoding='utf-8', xml_declaration=True))
