@@ -100,6 +100,76 @@ class TestPDFImages(TempDirTestCase):
         self.assertNotIn("<img", self._body(epub))
 
 
+def _make_figure_pdf(path, inner_image_path):
+    from PIL import Image
+
+    Image.new("RGB", (16, 16), "green").save(inner_image_path)
+    document = canvas.Canvas(path, pagesize=letter)
+    document.drawString(50, 740, "Before figure")
+    # A small graph drawn with vector paths, labelled like TikZ output
+    nodes = {"v1": (100, 640), "v2": (220, 640), "v3": (160, 540)}
+    for a, b in (("v1", "v2"), ("v2", "v3"), ("v3", "v1")):
+        document.line(*nodes[a], *nodes[b])
+    document.setFont("Helvetica", 9)
+    for label, (x, y) in nodes.items():
+        document.circle(x, y, 4, fill=1)
+        document.drawString(x + 6, y + 4, label)
+    # Already part of the rendered figure, so it must not be saved again
+    document.drawImage(inner_image_path, 150, 600, width=16, height=16)
+    # Off-page drawings must not abort the conversion
+    document.circle(730, 630, 20)
+    document.line(700, 600, 760, 660)
+    document.setFont("Helvetica", 12)
+    document.drawString(50, 470, "After figure")
+    # Neither a framed paragraph nor a rule is a figure
+    document.rect(45, 330, 420, 70)
+    document.drawString(50, 380, "This framed paragraph is ordinary prose and stays text.")
+    document.drawString(50, 350, "It wraps onto a second line inside the very same frame.")
+    document.line(50, 300, 500, 300)
+    document.drawString(50, 260, "Closing words")
+    document.showPage()
+    document.save()
+
+
+class TestPDFFigures(TempDirTestCase):
+    """Vector-drawn figures become images in place; frames and rules stay as they are."""
+
+    prefix = "econverter_test_pdf_figures_"
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls._pdf = os.path.join(cls._tmpdir, "figures.pdf")
+        _make_figure_pdf(cls._pdf, os.path.join(cls._tmpdir, "inner.png"))
+
+    def _body(self, *options):
+        import converter
+
+        epub = self.tmp_path("figures%d.epub" % len(options))
+        result = converter.convert(self._pdf, epub, *options)
+        self.assertTrue(result["success"], result["message"])
+        with zipfile.ZipFile(epub) as archive:
+            pages = (archive.read(name).decode("utf-8") for name in archive.namelist() if name.endswith(".html"))
+            return next(page for page in pages if "Before figure" in page)
+
+    def test_drawn_figure_becomes_one_image_between_its_paragraphs(self):
+        body = self._body()
+
+        self.assertEqual(body.count("<img"), 1)
+        self.assertLess(body.index("Before figure"), body.index("<img"))
+        self.assertLess(body.index("<img"), body.index("After figure"))
+
+    def test_figure_labels_leave_the_text_flow(self):
+        body = self._body()
+
+        for label in ("v1", "v2", "v3"):
+            self.assertNotIn(label, body)
+        self.assertIn("framed paragraph is ordinary prose", body)
+
+    def test_no_images_option_skips_figures(self):
+        self.assertNotIn("<img", self._body("--no-images"))
+
+
 class TestPDFInput(TempDirTestCase):
     """Text-based PDFs can be converted to EPUB."""
 
@@ -154,13 +224,13 @@ class TestPDFInput(TempDirTestCase):
     def test_html_preserves_czech_text_without_page_headings(self):
         from ebook_converter.ebooks.pdf.pdftohtml import pdftohtml
 
-        page = type("Page", (), {"get_textpage": lambda self: textpage, "get_objects": lambda self, **_: []})()
+        page = type("Page", (), {"get_textpage": lambda self: textpage})()
         textpage = type("TextPage", (), {"get_text_bounded": lambda self: "Český text"})()
         document = type("Doc", (), {"__iter__": lambda self: iter([page]), "get_toc": lambda self: []})()
         output_dir = self.tmp_path("czech")
         os.makedirs(output_dir)
         with patch("pypdfium2.PdfDocument", return_value=document):
-            pdftohtml(output_dir, self._pdf, no_images=False)
+            pdftohtml(output_dir, self._pdf, no_images=True)
 
         with open(os.path.join(output_dir, "index.html"), encoding="utf-8") as index:
             html = index.read()

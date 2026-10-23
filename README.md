@@ -15,7 +15,8 @@ python -m pip install ebook-converter-lib
 Python 3.11 or newer is required. PDF input uses PDFium through `pypdfium2`
 (installed automatically); no external tools are needed. Text, embedded images,
 the outline as table of contents, title, author and a first-page cover are
-taken from the PDF.
+taken from the PDF. Figures drawn with lines and curves (graphs, diagrams,
+tables) are detected and rendered as images in place.
 
 ## Use as a library
 
