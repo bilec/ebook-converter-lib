@@ -1491,6 +1491,7 @@ def safe_replace(zipstream, name, datastream, extra_replacements={},
 
     with SpooledTemporaryFile(max_size=100*1024*1024) as temp:
         ztemp = ZipFile(temp, 'w')
+        ztemp.comment = z.comment
         for obj in z.infolist():
             if isinstance(obj.filename, str):
                 obj.flag_bits |= 0x16  # Set isUTF-8 bit

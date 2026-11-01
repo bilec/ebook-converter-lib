@@ -7,6 +7,7 @@ from ebook_converter.constants_old import numeric_version
 from ebook_converter.customize import FileTypePlugin
 from ebook_converter.customize import InterfaceActionBase
 from ebook_converter.customize import MetadataReaderPlugin
+from ebook_converter.customize import MetadataWriterPlugin
 from ebook_converter.ebooks.metadata.archive import ArchiveExtract
 from ebook_converter.ebooks.metadata.archive import KPFExtract
 
@@ -237,6 +238,29 @@ class TXTZMetadataReader(MetadataReaderPlugin):
 
 plugins += [x for x in list(locals().values()) if isinstance(x, type) and
                                         x.__name__.endswith('MetadataReader')]
+
+
+class EPUBMetadataWriter(MetadataWriterPlugin):
+
+    name = 'Set EPUB metadata'
+    file_types = {'epub'}
+    description = 'Set EPUB title, authors, publisher and description'
+
+    def set_metadata(self, stream, mi, ftype):
+        from ebook_converter.ebooks.metadata.epub import set_metadata
+
+        fields = {
+            field: getattr(mi, field)
+            for field in ('title', 'authors', 'publisher', 'comments')
+            if not mi.is_null(field)
+        }
+        if self.apply_null:
+            for field in ('publisher', 'comments'):
+                fields[field] = getattr(mi, field) or ''
+        set_metadata(stream, fields)
+
+
+plugins += [EPUBMetadataWriter]
 
 # }}}
 

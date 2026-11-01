@@ -45,6 +45,23 @@ convert("book.epub", "book.mobi", "--base-font-size", "12")
 - Unknown options, stray values and invalid regular expressions fail the
   conversion.
 
+### EPUB metadata
+
+```python
+from ebook_converter_lib import read_metadata, update_metadata
+
+book = read_metadata("book.epub")
+result = update_metadata("book.epub", "updated.epub", title="New title")
+```
+
+EPUB 2/3, default rendition only; no conversion. Check `success` and `message`.
+`book["metadata"]` contains `title`, `authors` (list), `publisher`, `comments`;
+missing fields are `""`/`[]`, and failures return `None`. Updates accept these
+fields as keywords: omitted/`None` preserves, empty publisher/comments clears.
+Title and author names must be non-blank; the author list must be non-empty.
+The source stays untouched; a different output is replaced only on success.
+Book content is preserved, malformed XML fails, and cover changes are unsupported.
+
 ## Command line
 
 ```shell

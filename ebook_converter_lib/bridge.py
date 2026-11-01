@@ -1,6 +1,9 @@
+import os
 import re
 import shutil
+import tempfile
 import traceback
+from pathlib import Path
 
 
 def _parse_extra_args(extra_args):
@@ -39,6 +42,60 @@ def check_deps_str():
     except Exception as error:
         return f"Dependency check failed: {type(error).__name__}: {error}"
     return "Dependencies available."
+
+
+def read_metadata(input_path):
+    try:
+        from ebook_converter.ebooks.metadata.epub import get_metadata
+
+        source = Path(input_path)
+        if source.suffix.lower() != ".epub":
+            raise ValueError("Metadata reading supports EPUB files only")
+        with source.open("rb") as stream:
+            metadata = get_metadata(stream)
+        return {"success": True, "message": f"Read metadata from {input_path}", "metadata": metadata}
+    except Exception as error:
+        return {
+            "success": False,
+            "message": f"{type(error).__name__}: {error}\n{traceback.format_exc()}",
+            "metadata": None,
+        }
+
+
+def update_metadata(input_path, output_path, *, title=None, authors=None, publisher=None, comments=None):
+    temporary_path = None
+    try:
+        from ebook_converter.ebooks.metadata.epub import set_metadata
+
+        source, output = Path(input_path), Path(output_path)
+        if source.suffix.lower() != ".epub" or output.suffix.lower() != ".epub":
+            raise ValueError("Metadata updates support EPUB files only")
+        if source.resolve() == output.resolve() or (output.exists() and source.samefile(output)):
+            raise ValueError("Output must be a different file from the source")
+        fields = {"title": title, "authors": authors, "publisher": publisher, "comments": comments}
+        fields = {field: value for field, value in fields.items() if value is not None}
+        for field, value in fields.items():
+            if field == "authors":
+                if not isinstance(value, (list, tuple)) or not value:
+                    raise ValueError("authors must be a non-empty list of names")
+                if any(not isinstance(author, str) or not author.strip() for author in value):
+                    raise ValueError("authors must contain non-blank strings")
+            elif not isinstance(value, str) or (field == "title" and not value.strip()):
+                raise ValueError(f"{field} must be a string" + (" with a non-blank value" if field == "title" else ""))
+        with tempfile.NamedTemporaryFile(dir=output.parent, suffix=".epub", delete=False) as temporary:
+            temporary_path = temporary.name
+            with source.open("rb") as original:
+                shutil.copyfileobj(original, temporary)
+            temporary.flush()
+            set_metadata(temporary, fields)
+        os.replace(temporary_path, output)
+        temporary_path = None
+        return {"success": True, "message": f"Updated metadata in {output_path}"}
+    except Exception as error:
+        return {"success": False, "message": f"{type(error).__name__}: {error}\n{traceback.format_exc()}"}
+    finally:
+        if temporary_path is not None:
+            os.unlink(temporary_path)
 
 
 def convert(input_path, output_path, *extra_args):
