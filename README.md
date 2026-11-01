@@ -42,22 +42,28 @@ convert("book.epub", "book.mobi", "--base-font-size", "12")
 - Unknown options, stray values and invalid regular expressions fail the
   conversion.
 
-### EPUB metadata
+### Ebook metadata
 
 ```python
 from ebook_converter_lib import read_metadata, update_metadata
 
 book = read_metadata("book.epub")
 result = update_metadata("book.epub", "updated.epub", title="New title")
+result = update_metadata("book.azw3", "updated.azw3", authors=["New Author"])
 ```
 
-EPUB 2/3, default rendition only; no conversion. Check `success` and `message`.
+Supports EPUB 2/3 (default rendition only) and DRM-free AZW3/MOBI, including
+hybrid MOBI files containing both legacy MOBI and KF8. No conversion; input and
+output extensions must match. Check `success` and `message`.
 `book["metadata"]` contains `title`, `authors` (list), `publisher`, `comments`;
 missing fields are `""`/`[]`, and failures return `None`. Updates accept these
 fields as keywords: omitted/`None` preserves, empty publisher/comments clears.
 Title and author names must be non-blank; the author list must be non-empty.
 The source stays untouched; a different output is replaced only on success.
-Book content is preserved, malformed XML fails, and cover changes are unsupported.
+Book content and images are preserved; malformed XML or Kindle record structures
+fail, and cover changes are unsupported. Kindle updates retain unrelated EXTH
+records and update both metadata headers in hybrid files. Legacy Windows-1252
+books reject text that cannot be represented in their original encoding.
 
 ## Command line
 
@@ -89,6 +95,7 @@ uv run pytest
 - [ebook-converter](https://github.com/gryf/ebook-converter) by gryf, the original
   converter this library forks.
 - [Calibre](https://github.com/kovidgoyal/calibre) by Kovid Goyal (GPL v3), for
-  conversion and EPUB metadata code.
+  conversion and EPUB metadata code, and the AZW3/MOBI metadata record-update
+  logic adapted from [ebooks/metadata/mobi.py](https://github.com/kovidgoyal/calibre/blob/master/src/calibre/ebooks/metadata/mobi.py).
 - [PDFium](https://pdfium.googlesource.com/pdfium/) and
   [pypdfium2](https://github.com/pypdfium2-team/pypdfium2) for PDF input.

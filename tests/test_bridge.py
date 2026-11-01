@@ -1,4 +1,6 @@
+import io
 import os
+import struct
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -57,6 +59,245 @@ def _make_metadata_epub(source, version):
 
 def test_public_convert_is_bridge_function():
     assert convert.__module__ == "ebook_converter_lib.bridge"
+
+
+@pytest.fixture(params=["azw3", "old", "both"])
+def kindle_book(tmp_path, request):
+    from PIL import Image
+
+    kind = request.param
+    epub = tmp_path / "book.epub"
+    _make_metadata_epub(epub, "2.0")
+    image = io.BytesIO()
+    Image.new("RGB", (20, 20), "red").save(image, "PNG")
+    with ZipFile(epub) as archive:
+        entries = [(info, archive.read(info)) for info in archive.infolist()]
+    with ZipFile(epub, "w") as archive:
+        for info, data in entries:
+            if info.filename == "content.opf":
+                root = etree.fromstring(data)
+                manifest = root.find("{http://www.idpf.org/2007/opf}manifest")
+                etree.SubElement(
+                    manifest,
+                    "{http://www.idpf.org/2007/opf}item",
+                    id="image",
+                    href="image.png",
+                    **{"media-type": "image/png"},
+                )
+                data = etree.tostring(root)
+            elif info.filename == "chapter1.xhtml":
+                root = etree.fromstring(data)
+                body = root.find("{http://www.w3.org/1999/xhtml}body")
+                etree.SubElement(body, "{http://www.w3.org/1999/xhtml}img", src="image.png", alt="Red square")
+                data = etree.tostring(root)
+            archive.writestr(info, data)
+        archive.writestr("image.png", image.getvalue())
+    extension = "azw3" if kind == "azw3" else "mobi"
+    source, output = tmp_path / f"in.{extension}", tmp_path / f"out.{extension}"
+    args = () if kind == "azw3" else ("--mobi-file-type", kind)
+    conversion = convert(epub, source, *args)
+    assert conversion["success"], conversion["message"]
+    return source, output
+
+
+def _palm_records(data):
+    count = struct.unpack_from(">H", data, 76)[0]
+    offsets = [struct.unpack_from(">I", data, 78 + index * 8)[0] for index in range(count)]
+    return [data[start:stop] for start, stop in zip(offsets, offsets[1:] + [len(data)])]
+
+
+def test_kindle_metadata_round_trip_preserves_source(kindle_book, monkeypatch):
+    from ebook_converter.ebooks.conversion.plumber import Plumber
+    from ebook_converter.ebooks.mobi.reader.headers import BookHeader, MetadataHeader
+    from ebook_converter.logging import default_log
+    from ebook_converter_lib import read_metadata, update_metadata
+
+    source, output = kindle_book
+    monkeypatch.setattr(Plumber, "run", lambda self: pytest.fail("Metadata updates must not convert"))
+    original = source.read_bytes()
+    before = read_metadata(source)
+    assert before["success"], before["message"]
+    assert before["metadata"]["title"] == "Test Book"
+    result = update_metadata(source, output, title="New & title", authors=["First Author", "Second Author"])
+    assert result["success"], result["message"]
+    assert source.read_bytes() == original
+    after = read_metadata(output)
+    assert after["success"], after["message"]
+    assert after["metadata"] == {
+        "title": "New & title",
+        "authors": ["First Author", "Second Author"],
+        "publisher": "Original publisher",
+        "comments": "Original description",
+    }
+    before_records, after_records = _palm_records(original), _palm_records(output.read_bytes())
+    assert len(before_records) == len(after_records)
+    assert any(record.startswith(b"\x89PNG") or record.startswith(b"\xff\xd8") for record in before_records)
+    metadata_sections = {0}
+    with source.open("rb") as stream:
+        header = MetadataHeader(stream, default_log)
+        if header.kf8_type == "joint":
+            metadata_sections.add(header.exth.kf8_header)
+    for index, (before_record, after_record) in enumerate(zip(before_records, after_records)):
+        if index not in metadata_sections:
+            assert before_record == after_record
+        else:
+            header = BookHeader(after_record, b"BOOKMOBI", None, default_log)
+            assert header.title == "New & title"
+            assert header.exth.mi.authors == ["First Author", "Second Author"]
+
+
+def test_kindle_metadata_clears_only_requested_fields(kindle_book):
+    from ebook_converter_lib import read_metadata, update_metadata
+
+    source, output = kindle_book
+    result = update_metadata(source, output, publisher="", comments="")
+    assert result["success"], result["message"]
+    assert read_metadata(output)["metadata"] == {
+        "title": "Test Book",
+        "authors": ["Test Author"],
+        "publisher": "",
+        "comments": "",
+    }
+    repeated = update_metadata(output, source.with_name("again" + source.suffix), title="Longer title" * 50)
+    assert repeated["success"], repeated["message"]
+
+
+def test_kindle_metadata_noop_is_identical(kindle_book):
+    from ebook_converter_lib import update_metadata
+
+    source, output = kindle_book
+    result = update_metadata(source, output)
+    assert result["success"], result["message"]
+    assert source.read_bytes() == output.read_bytes()
+
+
+def test_kindle_metadata_unicode_round_trip(kindle_book):
+    from ebook_converter_lib import read_metadata, update_metadata
+
+    source, output = kindle_book
+    fields = {
+        "title": "\u010cesk\u00fd title \U0001f4d6",
+        "authors": ["Jos\u00e9", "\u674e"],
+        "comments": "<p>New & text</p>",
+    }
+    result = update_metadata(source, output, **fields)
+    assert result["success"], result["message"]
+    assert read_metadata(output)["metadata"] == {**fields, "publisher": "Original publisher"}
+
+
+@pytest.mark.parametrize("title, success", [("Jos\u00e9's book", True), ("\u674e's book", False)])
+def test_kindle_metadata_respects_windows_1252_encoding(kindle_book, title, success):
+    from ebook_converter_lib import read_metadata, update_metadata
+
+    source, output = kindle_book
+    data = bytearray(source.read_bytes())
+    first = struct.unpack_from(">I", data, 78)[0]
+    struct.pack_into(">I", data, first + 28, 1252)
+    source.write_bytes(data)
+    output.write_bytes(b"Existing output")
+    result = update_metadata(source, output, title=title)
+    assert result["success"] is success, result["message"]
+    assert source.read_bytes() == data
+    if success:
+        assert read_metadata(output)["metadata"]["title"] == title
+    else:
+        assert output.read_bytes() == b"Existing output"
+
+
+def test_kindle_metadata_creates_missing_exth(kindle_book):
+    from ebook_converter_lib import read_metadata, update_metadata
+
+    source, output = kindle_book
+    data = bytearray(source.read_bytes())
+    first = struct.unpack_from(">I", data, 78)[0]
+    flags = struct.unpack_from(">I", data, first + 128)[0]
+    struct.pack_into(">I", data, first + 128, flags & ~0x40)
+    source.write_bytes(data)
+    result = update_metadata(source, output, title="Added metadata", authors=["New Author"])
+    assert result["success"], result["message"]
+    assert read_metadata(output)["metadata"] == {
+        "title": "Added metadata",
+        "authors": ["New Author"],
+        "publisher": "",
+        "comments": "",
+    }
+
+
+def test_kindle_metadata_preserves_unknown_and_repeated_exth(kindle_book):
+    from ebook_converter_lib import update_metadata
+
+    source, output = kindle_book
+    data = bytearray(source.read_bytes())
+    first = struct.unpack_from(">I", data, 78)[0]
+    length = struct.unpack_from(">I", data, first + 20)[0]
+    position = first + 16 + length + 12
+    count = struct.unpack_from(">I", data, first + 16 + length + 8)[0]
+    preserved = []
+    for index in range(count):
+        code, size = struct.unpack_from(">II", data, position)
+        if code in (101, 103):
+            struct.pack_into(">I", data, position, 999)
+            preserved.append(bytes(data[position : position + size]))
+        position += size
+    assert len(preserved) == 2
+    source.write_bytes(data)
+    result = update_metadata(source, output, title="Only title changes")
+    assert result["success"], result["message"]
+    for record in preserved:
+        assert record in _palm_records(output.read_bytes())[0]
+
+
+@pytest.mark.parametrize("damage", ["drm", "offsets", "exth", "truncated", "identity"])
+def test_kindle_metadata_rejects_invalid_input_without_overwriting(kindle_book, damage):
+    from ebook_converter_lib import read_metadata, update_metadata
+
+    source, output = kindle_book
+    data = bytearray(source.read_bytes())
+    first = struct.unpack_from(">I", data, 78)[0]
+    if damage == "drm":
+        struct.pack_into(">H", data, first + 12, 1)
+    elif damage == "offsets":
+        struct.pack_into(">I", data, 86, len(data) + 1)
+    elif damage == "exth":
+        length = struct.unpack_from(">I", data, first + 20)[0]
+        struct.pack_into(">I", data, first + 16 + length + 16, 0)
+    elif damage == "truncated":
+        data = data[: first + 20]
+    else:
+        data[60:68] = b"TEXtREAd"
+    source.write_bytes(data)
+    output.write_bytes(b"Existing output")
+    result = update_metadata(source, output, title="New title")
+    assert not result["success"]
+    assert read_metadata(source)["metadata"] is None
+    assert source.read_bytes() == data
+    assert output.read_bytes() == b"Existing output"
+    assert set(source.parent.iterdir()) == {source, output, source.with_name("book.epub")}
+
+
+@pytest.mark.parametrize("kind", ["same", "symlink", "hardlink", "different-extension", "invalid-authors"])
+def test_kindle_metadata_preserves_files_on_invalid_request(kindle_book, kind):
+    from ebook_converter_lib import update_metadata
+
+    source, output = kindle_book
+    fields = {"title": "New title"}
+    if kind == "same":
+        output = source
+    elif kind == "symlink":
+        output.symlink_to(source)
+    elif kind == "hardlink":
+        os.link(source, output)
+    else:
+        if kind == "different-extension":
+            output = output.with_suffix(".epub")
+        else:
+            fields = {"authors": []}
+        output.write_bytes(b"Existing output")
+    original, existing = source.read_bytes(), output.read_bytes()
+    result = update_metadata(source, output, **fields)
+    assert not result["success"]
+    assert source.read_bytes() == original
+    assert output.read_bytes() == existing
 
 
 @pytest.mark.parametrize("version", ["2.0", "3.0"])
@@ -450,16 +691,16 @@ def test_epub_metadata_plugin_clears_optional_fields_only_when_requested(tmp_pat
     }
 
 
-@pytest.mark.parametrize("extension", [".mobi", ".pdf"])
-def test_update_metadata_rejects_non_epub_formats(tmp_path, extension):
+@pytest.mark.parametrize("extension, output_extension", [(".mobi", ".epub"), (".pdf", ".pdf"), (".epub", ".azw3")])
+def test_update_metadata_rejects_unsupported_or_mismatched_formats(tmp_path, extension, output_extension):
     from ebook_converter_lib import update_metadata
 
-    source, output = tmp_path / ("in" + extension), tmp_path / "out.epub"
+    source, output = tmp_path / ("in" + extension), tmp_path / ("out" + output_extension)
     source.write_bytes(b"unsupported book")
     result = update_metadata(source, output, title="Changed")
 
     assert not result["success"]
-    assert "EPUB files only" in result["message"]
+    assert "matching EPUB, AZW3 or MOBI file extensions" in result["message"]
     assert not output.exists()
 
 

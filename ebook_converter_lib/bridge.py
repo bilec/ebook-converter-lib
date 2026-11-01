@@ -46,11 +46,13 @@ def check_deps_str():
 
 def read_metadata(input_path):
     try:
-        from ebook_converter.ebooks.metadata.epub import get_metadata
-
         source = Path(input_path)
-        if source.suffix.lower() != ".epub":
-            raise ValueError("Metadata reading supports EPUB files only")
+        if source.suffix.lower() == ".epub":
+            from ebook_converter.ebooks.metadata.epub import get_metadata
+        elif source.suffix.lower() in (".azw3", ".mobi"):
+            from ebook_converter.ebooks.metadata.mobi import get_metadata
+        else:
+            raise ValueError("Metadata reading supports EPUB, AZW3 and MOBI files only")
         with source.open("rb") as stream:
             metadata = get_metadata(stream)
         return {"success": True, "message": f"Read metadata from {input_path}", "metadata": metadata}
@@ -65,11 +67,14 @@ def read_metadata(input_path):
 def update_metadata(input_path, output_path, *, title=None, authors=None, publisher=None, comments=None):
     temporary_path = None
     try:
-        from ebook_converter.ebooks.metadata.epub import set_metadata
-
         source, output = Path(input_path), Path(output_path)
-        if source.suffix.lower() != ".epub" or output.suffix.lower() != ".epub":
-            raise ValueError("Metadata updates support EPUB files only")
+        extension = source.suffix.lower()
+        if extension not in (".epub", ".azw3", ".mobi") or output.suffix.lower() != extension:
+            raise ValueError("Metadata updates require matching EPUB, AZW3 or MOBI file extensions")
+        if extension == ".epub":
+            from ebook_converter.ebooks.metadata.epub import set_metadata
+        else:
+            from ebook_converter.ebooks.metadata.mobi import set_metadata
         if source.resolve() == output.resolve() or (output.exists() and source.samefile(output)):
             raise ValueError("Output must be a different file from the source")
         fields = {"title": title, "authors": authors, "publisher": publisher, "comments": comments}
@@ -82,7 +87,7 @@ def update_metadata(input_path, output_path, *, title=None, authors=None, publis
                     raise ValueError("authors must contain non-blank strings")
             elif not isinstance(value, str) or (field == "title" and not value.strip()):
                 raise ValueError(f"{field} must be a string" + (" with a non-blank value" if field == "title" else ""))
-        with tempfile.NamedTemporaryFile(dir=output.parent, suffix=".epub", delete=False) as temporary:
+        with tempfile.NamedTemporaryFile(dir=output.parent, suffix=extension, delete=False) as temporary:
             temporary_path = temporary.name
             with source.open("rb") as original:
                 shutil.copyfileobj(original, temporary)
