@@ -685,7 +685,7 @@ def set_comments(root, prefixes, refines, val):
     if val:
         val = val.strip()
         if val:
-            c = m.makeelement(oeb_base.tag('dc', 'desc'))
+            c = m.makeelement(oeb_base.tag('dc', 'description'))
             c.text = val
             m.append(c)
 # }}}

@@ -1,10 +1,7 @@
 # ebook-converter-lib
 
 `ebook-converter-lib` is a Python library and command-line tool for converting
-ebooks between common formats. It is a modified fork of
-[ebook-converter](https://github.com/gryf/ebook-converter) by gryf, which is
-itself derived from the conversion components of
-[Calibre](https://calibre-ebook.com/). Licensed under GPL-3.0-or-later.
+ebooks between common formats. Licensed under GPL-3.0-or-later.
 
 ## Install
 
@@ -45,6 +42,23 @@ convert("book.epub", "book.mobi", "--base-font-size", "12")
 - Unknown options, stray values and invalid regular expressions fail the
   conversion.
 
+### EPUB metadata
+
+```python
+from ebook_converter_lib import read_metadata, update_metadata
+
+book = read_metadata("book.epub")
+result = update_metadata("book.epub", "updated.epub", title="New title")
+```
+
+EPUB 2/3, default rendition only; no conversion. Check `success` and `message`.
+`book["metadata"]` contains `title`, `authors` (list), `publisher`, `comments`;
+missing fields are `""`/`[]`, and failures return `None`. Updates accept these
+fields as keywords: omitted/`None` preserves, empty publisher/comments clears.
+Title and author names must be non-blank; the author list must be non-empty.
+The source stays untouched; a different output is replaced only on success.
+Book content is preserved, malformed XML fails, and cover changes are unsupported.
+
 ## Command line
 
 ```shell
@@ -69,3 +83,12 @@ The output format is chosen from the output file extension.
 uv sync --group dev
 uv run pytest
 ```
+
+## Credits
+
+- [ebook-converter](https://github.com/gryf/ebook-converter) by gryf, the original
+  converter this library forks.
+- [Calibre](https://github.com/kovidgoyal/calibre) by Kovid Goyal (GPL v3), for
+  conversion and EPUB metadata code.
+- [PDFium](https://pdfium.googlesource.com/pdfium/) and
+  [pypdfium2](https://github.com/pypdfium2-team/pypdfium2) for PDF input.
