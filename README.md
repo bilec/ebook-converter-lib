@@ -1,10 +1,7 @@
 # ebook-converter-lib
 
 `ebook-converter-lib` is a Python library and command-line tool for converting
-ebooks between common formats. It is a modified fork of
-[ebook-converter](https://github.com/gryf/ebook-converter) by gryf, which is
-itself derived from the conversion components of
-[Calibre](https://calibre-ebook.com/). Licensed under GPL-3.0-or-later.
+ebooks between common formats. Licensed under GPL-3.0-or-later.
 
 ## Install
 
@@ -86,3 +83,12 @@ The output format is chosen from the output file extension.
 uv sync --group dev
 uv run pytest
 ```
+
+## Credits
+
+- [ebook-converter](https://github.com/gryf/ebook-converter) by gryf, the original
+  converter this library forks.
+- [Calibre](https://github.com/kovidgoyal/calibre) by Kovid Goyal (GPL v3), for
+  conversion and EPUB metadata code.
+- [PDFium](https://pdfium.googlesource.com/pdfium/) and
+  [pypdfium2](https://github.com/pypdfium2-team/pypdfium2) for PDF input.
