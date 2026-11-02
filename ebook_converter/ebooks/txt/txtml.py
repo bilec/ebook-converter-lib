@@ -70,7 +70,7 @@ class TXTMLizer(object):
                     x.text = x.text.replace('--', '__')
             content = etree.tostring(item.data, encoding='unicode')
             content = self.remove_newlines(content)
-            content = etree.fromstring(content)
+            content = parse_utils._fromstring(content)
             stylizer = Stylizer(content, item.href, self.oeb_book, self.opts,
                                 self.opts.output_profile)
             output += self.dump_text(content.find(base.tag('xhtml', 'body')),

@@ -61,6 +61,23 @@ def test_public_convert_is_bridge_function():
     assert convert.__module__ == "ebook_converter_lib.bridge"
 
 
+@pytest.mark.parametrize("text", ["Plain text", "\u010cesk\u00fd text", "Let \U0001d434 be a set \U0001f4d6"])
+def test_markdown_to_txt_without_libxml2_ucs4(tmp_path, monkeypatch, text):
+    fromstring = etree.fromstring
+
+    def chaquopy_fromstring(content, *args, **kwargs):
+        if isinstance(content, str) and any(ord(char) > 0xFFFF for char in content):
+            raise etree.XMLSyntaxError("Char 0x0 out of allowed range", 9, 1, 2, "<string>")
+        return fromstring(content, *args, **kwargs)
+
+    source, output = tmp_path / "book.md", tmp_path / "book.txt"
+    source.write_text(f"# Heading\n\n{text}\n", encoding="utf-8")
+    monkeypatch.setattr(etree, "fromstring", chaquopy_fromstring)
+    result = convert(source, output)
+    assert result["success"], result["message"]
+    assert text in output.read_text(encoding="utf-8")
+
+
 @pytest.fixture(params=["azw3", "old", "both"])
 def kindle_book(tmp_path, request):
     from PIL import Image
